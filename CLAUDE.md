@@ -130,7 +130,7 @@ Con Prisma (usa `prisma db push` en clase contra la URL **sin agrupar**; explica
 Tablas mínimas (nombres en `snake_case` con `@@map`):
 
 - `clientes`: `id`, **`documento` único** (NIT sin puntos ni guion, sin dígito de verificación), `dv`, `nombre`, `creado_en`.
-- `facturas`: `id`, **`numero` único**, `fecha`, `proveedor`, `nit_proveedor`, `cliente_id` (nullable: si el documento no se pudo leer, queda en revisión), `subtotal`, `iva`, `total` (enteros en COP), `estado` (`aceptada` | `revision`), `motivos` (texto), `archivo` (nombre original), `blob_pathname` (ruta de la imagen en Blob), `hash_archivo` (SHA-256, **único**), `confianza_ocr`, `proceso_id`.
+- `facturas`: `id`, **`numero` único**, `fecha`, `proveedor` (razón social), `nit_proveedor`, `cliente_id` (nullable: si el documento no se pudo leer, queda en revisión), `subtotal` (valor antes de IVA), `iva`, `impoconsumo` (0 si no aplica), `total` (enteros en COP), `estado` (`aceptada` | `revision`), `motivos` (texto), `archivo` (nombre original), `blob_pathname` (ruta de la imagen en Blob), `hash_archivo` (SHA-256, **único**), `confianza_ocr`, `proceso_id`.
 - `items_factura`: `id`, `factura_id`, `descripcion`, `cantidad`, `precio_unitario`, `subtotal`.
 - `procesos`: `id`, `carpeta` (solo el nombre que mostró el navegador), `estado` (`en_cola` | `subiendo` | `ejecutando` | `terminado` | `error`), `total_archivos`, `procesados`, `aceptadas`, `en_revision`, `duplicadas`, `clientes_nuevos`, `clientes_existentes`, `inicio`, `fin`, `ruta_excel` (pathname en Blob).
 - **`archivos`** (la cola de trabajo, nueva): `id`, `proceso_id`, `blob_pathname` (único por proceso), `nombre`, `estado` (`pendiente` | `procesando` | `ok` | `error`), `intentos`, `reclamado_en`, `error`.
@@ -153,7 +153,14 @@ Verificación: elegir la carpeta, subir 20 imágenes y ver en el panel de Blob l
 
 ### Fase 4 — Extractor de datos (lógica pura, con pruebas)
 
-Función pura `extraer(textoOcr): ParcialFactura` y `validar(parcial): string[]` (lista de motivos de revisión). Sin OCR ni base de datos, para poder probarla con texto de ejemplo. Campos: número (`FE-000123`), fecha (tres formatos: `dd/mm/yyyy`, `yyyy-mm-dd`, `12 de marzo de 2026`, normalizada a `yyyy-mm-dd`), proveedor, NIT del proveedor, **documento y nombre del cliente**, ítems, subtotal, IVA, total.
+Función pura `extraer(textoOcr): ParcialFactura` y `validar(parcial): string[]` (lista de motivos de revisión). Sin OCR ni base de datos, para poder probarla con texto de ejemplo. Campos: número (`FE-000123`), fecha de **emisión** (tres formatos: `dd/mm/yyyy`, `yyyy-mm-dd`, `12 de marzo de 2026`, normalizada a `yyyy-mm-dd`), proveedor (razón social), NIT del proveedor, **documento y nombre del cliente**, ítems, subtotal (valor antes de IVA), IVA, **impoconsumo** (opcional) y total.
+
+Contexto tributario colombiano que debes entender y explicar al estudiante:
+
+- Una factura electrónica de venta trae: razón social y NIT con DV del emisor, adquirente (razón social y NIT/CC), número con prefijo, resolución de numeración DIAN, fecha y hora de emisión, forma y medio de pago, ítems, valor antes de IVA, IVA, total y **CUFE** (hash SHA-384 de 96 caracteres hexadecimales).
+- **IVA** general: 19 %. **Impuesto nacional al consumo (INC, "impoconsumo")**: 4 % sobre telefonía móvil, datos e internet móvil; se liquida sobre el valor **sin IVA** y convive con el IVA, así que en esas facturas `total = subtotal + IVA + impoconsumo`. Matiz: para datos/internet móvil la base del 4 % es lo que exceda 1,5 UVT mensuales (concepto DIAN 828 de 2024); el generador lo simplifica aplicando el 4 % a todo el servicio. Verifica las tarifas vigentes con un contador y mantenlas como constantes parametrizadas.
+- La factura trae **otras fechas y cifras largas que no son los campos buscados**: fecha de vencimiento, fecha de la resolución DIAN, número de resolución (14 dígitos), rango de numeración y el CUFE. El extractor debe tomar la fecha de **emisión** y no confundir esas cifras con NIT, número de factura o importes.
+- Las etiquetas varían por diseño: "Valor antes de IVA" / "Subtotal" / "SUBTOTAL" / "Base gravable"; "IVA 19%" / "IVA (19%)" / "IVA 19 %"; "Impoconsumo 4%" / "Impuesto nacional al consumo (4%)" / "Imp. consumo 4 %"; "TOTAL A PAGAR" / "Total factura" / "TOTAL" / "VALOR TOTAL". El NIT aparece con o sin puntos (`900.123.456-7` o `900123456-7`).
 
 Lecciones de la prueba previa que **debes** incorporar:
 
@@ -163,7 +170,7 @@ Lecciones de la prueba previa que **debes** incorporar:
 - El proveedor puede aparecer en la misma línea que la palabra `FACTURA`: corta en `S.A.S.`.
 - Cuidado con falsos positivos de palabras (por ejemplo, "Mo**nit**or" contiene "nit"): usa límites de palabra (`\b`).
 - **Reparación por redundancia aritmética**: si `cantidad × precio ≠ subtotal` pero `subtotal / precio` es un entero pequeño, el OCR leyó mal la cantidad; corrígela.
-- Validaciones de negocio: ítems suman el subtotal; `cantidad × precio = subtotal`; IVA = 19 % del subtotal (tolerancia de $1); `subtotal + IVA = total`; campos obligatorios presentes.
+- Validaciones de negocio: ítems suman el subtotal; `cantidad × precio = subtotal`; IVA = 19 % del subtotal (tolerancia de $1); si hay impoconsumo, = 4 % del subtotal (tolerancia de $1); `subtotal + IVA + impoconsumo = total`; campos obligatorios presentes. Si el texto menciona "impoconsumo"/"consumo" pero no se pudo leer su valor, es motivo de revisión.
 - **Dígito de verificación del NIT** (algoritmo de la DIAN): se aplican los pesos `3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71` a los dígitos desde la derecha; `r = suma mod 11`; `dv = r > 1 ? 11 − r : r`. Comprobado: 890903938 → 8, 860034313 → 7, 899999068 → 1. Úsalo para **validar el documento del cliente y el NIT del proveedor**. Detecta cerca del 98 % de los errores de un dígito, no todos: no lo presentes como garantía.
 - **El cliente se identifica por documento, nunca por nombre** (el OCR altera los nombres). Si el documento no pasa el dígito de verificación, la factura queda en `revision` y **no se crea ningún cliente**.
 
@@ -201,7 +208,7 @@ Verificación: procesar 50 facturas dos veces (subiéndolas dos veces) deja el m
 Al finalizar el proceso, genera con `exceljs` **a partir de la base de datos** (no de la memoria) un archivo en memoria y súbelo a Blob en `procesos/<id>/resultado_AAAA-MM-DD_HHmm.xlsx` (hora de Colombia, con fecha y hora para no pisar ejecuciones anteriores):
 
 - Hojas:
-  - **Facturas**: archivo, número, fecha, proveedor, NIT proveedor, documento cliente, cliente, subtotal, IVA, total, estado, motivos, confianza OCR.
+  - **Facturas**: archivo, número, fecha, proveedor, NIT proveedor, documento cliente, cliente, subtotal (valor antes de IVA), IVA, impoconsumo, total, estado, motivos, confianza OCR.
   - **Ítems**: número de factura, descripción, cantidad, precio unitario, subtotal.
   - **Clientes**: documento, nombre, número de facturas, total comprado.
   - **Resumen**: total de archivos, aceptadas, en revisión, clientes nuevos y existentes, duración.
@@ -226,7 +233,7 @@ Se trabaja en paralelo con las demás fases (primer despliegue en la Fase 1), pe
 
 - Variables de entorno definidas en Production, Preview y Development; ningún secreto en el repo (`git log -p` sin secretos).
 - `maxDuration` configurado en las rutas de lote y finalización según el plan; tamaño de lote y concurrencia justificados con las mediciones de la Fase 5.
-- **Protección de acceso**: los endpoints gastan cuota de Blob, base de datos y CPU. Añade una contraseña compartida mínima (variable `ACCESS_PASSWORD`, comprobada en `proxy.ts` y/o en cada Route Handler) o activa la protección de despliegue de Vercel. Explica que no es un sistema de usuarios y por qué hace falta aun así.
+- **Autenticación (decisión pendiente, depende de la base de datos):** Vercel **no trae un producto propio de login de usuarios**. Opciones: **Clerk** (integración nativa del Marketplace de Vercel), **Better Auth** (autoalojado, guarda usuarios en nuestra propia base de datos; encaja con Neon/Postgres, correo y contraseña habilitados), **Auth0**, o **Firebase Authentication** si la base de datos pasa a Firebase (correo y contraseña de serie). Antes de implementar, comprueba en la documentación vigente qué soporta cada una. Todas las rutas de la API (`/api/procesos/*`, `/api/blob/subir`, descargas) deben exigir sesión y **cada proceso pertenece a un usuario**, porque los endpoints gastan cuota de Blob, base de datos y CPU. La protección de despliegue de Vercel protege el acceso a los despliegues (equipo), no sirve como login de usuarios finales. Como mínimo provisional: contraseña compartida `ACCESS_PASSWORD` comprobada en `proxy.ts`.
 - Los blobs de producción se borran o se conservan según una política explícita (p. ej. borrar las imágenes de procesos antiguos); decide con el estudiante y documéntalo.
 - Registro de errores: revisa los *runtime logs* de Vercel tras la corrida completa y reporta cualquier 504, 413 o error de conexión a la base de datos.
 
@@ -234,16 +241,18 @@ Verificación: la corrida completa en producción sin errores en los logs, y una
 
 ### Fase G — Generador de facturas (SOLO PROFESOR; los estudiantes reciben un zip)
 
-`scripts/generar-facturas.ts`, con `@faker-js/faker` (semilla fija), `playwright` (Chromium: `npx playwright install chromium`) y `sharp`:
+**Estado: implementado** en `scripts/generar-facturas.ts` (+ `scripts/generador/datos.ts` y `disenos.ts`). Uso: `npm run generar:facturas -- --cantidad 10 --semilla 2026 --salida salida`. Por defecto genera **10** facturas para ir probando; para el ejercicio completo se usa `--cantidad 1000`. Las proporciones (850/1000 clientes distintos, 60/30/10 de calidad, ~15 % móviles) se escalan con la cantidad.
 
-- Crea primero un **pool de 850 clientes únicos**, cada uno con un NIT de 9 dígitos y **dígito de verificación válido** (usa el algoritmo de la Fase 4) y un nombre. Genera 1000 facturas: las 850 primeras (en orden aleatorio) usan un cliente distinto cada una y las **150 restantes reutilizan clientes ya usados** al azar; un cliente repetido conserva **exactamente el mismo documento y nombre**. Mezcla el orden final.
-- Cada factura incluye: proveedor + NIT (con dígito válido), número único `FE-000001…`, fecha del año, **documento y nombre del cliente**, 1–6 ítems con cantidad y precio, subtotal, IVA 19 %, total.
-- Al menos **4 diseños** distintos (clásico con tabla, encabezado de color con texto blanco, ticket angosto tipo POS, caja con borde doble), varias fuentes y formatos de fecha.
-- Calidad: 60 % limpia (PNG), 30 % media (rotación leve, desenfoque, JPEG calidad 70) y 10 % mala (rotación, menor resolución, desenfoque, JPEG calidad ~38).
-- Salida: carpeta `facturas/` con **solo las imágenes** (`factura_0001.png|jpg` …, sin pistas del contenido en el nombre), más **`verdad.json`** (datos correctos de cada factura y cliente) **fuera** de esa carpeta, para repartirlo aparte.
-- Comprueba al terminar: 1000 imágenes, 850 documentos únicos, 150 repeticiones, 0 números de factura repetidos, tamaño total del zip (se espera del orden de 90 MB).
+- **Cero tokens:** todo es determinista (`@faker-js/faker` con semilla fija + HTML renderizado con `playwright` + degradación con `sharp`). **No se usa ningún LLM** para generar facturas. (El `.env` local tiene una `DEEPSEEK_API_KEY`: el generador no la usa; si algún día se usa, que sea como mejora opcional de extracción para facturas en `revision`, nunca para generar datos.)
+- Crea primero un **pool de clientes únicos** (documento de 9 dígitos con **dígito de verificación válido**, usando `src/lib/ocr/nit.ts`) y asigna las facturas restantes a clientes ya usados; un cliente repetido conserva **exactamente el mismo documento y nombre**. Mezcla el orden final.
+- Cada factura incluye: proveedor (razón social ficticia, NIT con DV válido, dirección, responsabilidad de IVA, resolución DIAN), número único `FE-000001…` sin relación con el nombre del archivo, fecha y hora de emisión, fecha de vencimiento, forma y medio de pago, **documento y nombre del cliente**, 1–6 ítems, **valor antes de IVA, IVA 19 %, impoconsumo 4 % (solo facturas de telefonía móvil)**, total y un CUFE simulado (SHA-384 con la estructura de la DIAN y clave técnica ficticia: no es verificable). Cada imagen lleva el aviso "documento sintético con datos ficticios para fines académicos".
+- **4 diseños** (clásico con tabla, encabezado de color con texto blanco, ticket POS angosto, caja con borde doble), con fuentes, etiquetas de totales, formatos de NIT y de fecha distintos. Hay descripciones largas que se parten en dos líneas y una descripción con "Monitor" (falso positivo de "nit").
+- Calidad por cuotas: limpia (PNG), media (rotación leve, desenfoque, JPEG 70) y mala (65 % de resolución, rotación, desenfoque, JPEG ~38).
+- Salida: `salida/facturas/` con **solo las imágenes** (`factura_0001.png|jpg` …) y `salida/verdad.json` (datos correctos de cada factura, incluidos ítems, diseño y calidad) **fuera** de esa carpeta. `salida/` está en `.gitignore`.
+- Al terminar el script **comprueba y falla (exit 1)** si: el número de imágenes no coincide, hay números repetidos, `subtotal + IVA + INC ≠ total`, el impoconsumo no es coherente con "móvil" o algún DV es inválido. Imprime imágenes, clientes distintos, repeticiones, móviles, diseños, calidad y tamaño.
+- Para el zip del curso: `--cantidad 1000` y revisar que el tamaño del zip sea del orden de 90 MB (**no medido todavía**: con 10 facturas ocupan ~1 MB).
 
-Verificación: se imprime el resumen anterior y se revisan a ojo 4 imágenes (una por diseño).
+Verificación: el resumen se imprime con las comprobaciones en OK y se revisan a ojo 4 imágenes (una por diseño) — hecho con 10 facturas.
 
 ## 6. Cuando termines todo
 

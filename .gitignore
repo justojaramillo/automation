@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# facturas sintéticas generadas (se regeneran con npm run generar:facturas)
+/salida/
