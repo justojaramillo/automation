@@ -1,16 +1,16 @@
-# CLAUDE.md — Procesador de facturas (Next.js + OCR + Vercel Blob + Postgres + Excel) desplegado en Vercel
+# CLAUDE.md — Procesador de facturas (Next.js + OCR + Vercel Blob + Firebase + Excel) desplegado en Vercel
 
 Eres la IA que ayuda a un estudiante a construir **desde cero** este proyecto, por fases.
 Contexto: clase "Tendencias en desarrollo de software", tema **automatización**. El estudiante sabe TypeScript y Python.
 El objetivo es que **entienda lo que construye**: explica brevemente el porqué de cada paso y no avances de fase sin que la verificación pase.
 
-> **Cambio de arquitectura respecto a la versión anterior:** el proyecto ya no corre en el computador del usuario con XAMPP/MySQL y rutas del disco. Ahora se **despliega en Vercel**: las facturas se suben a **Vercel Blob**, los datos viven en **Postgres (Neon, desde el Marketplace de Vercel)** y el Excel se guarda en Blob. Esto cambia cómo se selecciona la carpeta, cómo corre el trabajo largo y dónde queda el Excel (ver sección 1 y las fases).
+> **Cambio de arquitectura respecto a la versión anterior:** el proyecto ya no corre en el computador del usuario con XAMPP/MySQL y rutas del disco. Ahora se **despliega en Vercel**: las facturas se suben a **Vercel Blob**, los datos viven en **Firestore (Firebase)**, los usuarios se autentican con **Firebase Authentication (correo y contraseña)** y el Excel se guarda en Blob. Esto cambia cómo se selecciona la carpeta, cómo corre el trabajo largo y dónde queda el Excel (ver sección 1 y las fases).
 
 ## 1. Qué hace el sistema
 
 1. El usuario abre la app (desplegada en Vercel) y **elige una carpeta** de su computador con las imágenes de facturas (`.png` / `.jpg`) usando el selector de carpetas del navegador.
 2. Pulsa **Procesar** y, de ahí en adelante, todo es automático:
-   **subir** cada imagen a Vercel Blob → leerla con OCR → extraer campos → validar → guardar en **Postgres** → generar un **Excel**.
+   **subir** cada imagen a Vercel Blob → leerla con OCR → extraer campos → validar → guardar en **Firestore** → generar un **Excel**.
 3. El Excel se guarda **en Vercel Blob** (bajo `procesos/<id>/`) y la interfaz ofrece el enlace de descarga. (Un servidor en la nube no puede escribir en el disco del usuario; por eso ya no existe "el Excel queda en la misma carpeta de las imágenes".)
 4. La interfaz muestra el avance en vivo y un resumen final.
 
@@ -34,13 +34,13 @@ El objetivo es que **entienda lo que construye**: explica brevemente el porqué 
 
 - **Trabaja por fases (sección 5).** Al terminar cada fase: ejecuta la verificación de la fase, muestra el resultado, haz un commit, súbelo a GitHub (Vercel despliega solo) y **detente** hasta que el estudiante diga que continúe.
 - **Nunca inventes credenciales ni asumas valores de conexión.** Los valores los inyecta Vercel (`vercel env pull`); ver Fase 0.
-- **Nunca escribas secretos en el código ni en Git.** Solo en variables de entorno de Vercel y en `.env.local` (ignorado por Git, verifícalo con `git check-ignore`). Mantén un `.env.example` con los **nombres** de las variables y valores falsos.
-- **No uses de memoria APIs de versiones nuevas.** Antes de escribir código con Next.js, Prisma, `@vercel/blob`, tesseract.js o exceljs, comprueba la versión instalada (`npm ls <paquete>`) y lee su documentación oficial o los tipos en `node_modules`. Tu conocimiento puede estar desactualizado. Para Next.js, lee `node_modules/next/dist/docs/` (ver `AGENTS.md`).
+- **Nunca escribas secretos en el código ni en Git.** Solo en variables de entorno de Vercel y en `.env` (ignorado por Git, verifícalo con `git check-ignore`). **Nunca imprimas el contenido de `.env`** (ni con `cat`, ni con `awk`, ni en logs): para inspeccionarlo muestra solo nombres y longitudes. La clave privada de Firebase solo se usa en el servidor y jamás lleva el prefijo `NEXT_PUBLIC_`. Mantén un `.env.example` con los **nombres** de las variables y valores falsos.
+- **No uses de memoria APIs de versiones nuevas.** Antes de escribir código con Next.js, `firebase-admin`, `firebase`, `@vercel/blob`, tesseract.js o exceljs, comprueba la versión instalada (`npm ls <paquete>`) y lee su documentación oficial o los tipos en `node_modules`. Tu conocimiento puede estar desactualizado. Para Next.js, lee `node_modules/next/dist/docs/` (ver `AGENTS.md`).
 - **Los límites de Vercel cambian**: antes de decidir tamaños de lote, duración o tamaño de bundle, consulta https://vercel.com/docs/functions/limitations y https://vercel.com/docs/vercel-blob/usage-and-pricing.
-- Instala versiones **exactas y actuales** (`npm view <paquete> version`). Fija Prisma en la serie 7 (`prisma@7`, `@prisma/client@7`): el tag `latest` puede apuntar a una versión candidata de la 8.
+- Instala versiones **exactas y actuales** (`npm view <paquete> version`). Comprueba que `vitest`, `firebase-admin` y `@types/node` sean compatibles entre sí (hubo un conflicto de pares con `@types/node@20`; el proyecto usa la serie 24, igual que Node).
 - Si algo del documento no funciona como se describe, **dilo claramente** y explica qué cambiaste. No lo escondas.
 - TypeScript en modo estricto, sin `any` salvo justificación comentada.
-- Convenciones: variables y funciones en `camelCase`, tipos y componentes en `PascalCase`, tablas y columnas en `snake_case` (con `@map` / `@@map` en Prisma), textos de la interfaz en español.
+- Convenciones: variables y funciones en `camelCase`, tipos y componentes en `PascalCase`, colecciones de Firestore en `snake_case` en plural (`clientes`, `facturas`, `indices_numero`, `procesos`) y campos en `camelCase`, textos de la interfaz en español.
 - Un commit por fase con mensaje claro (`fase-3: subida de carpeta a Blob`). Etiqueta `fase-N` al terminar.
 
 ### Detector de código desactualizado (Next.js 16)
@@ -55,8 +55,8 @@ Si vas a escribir algo de esta lista, para y revisa la documentación:
 | Hosting | **Vercel** (proyecto enlazado al repositorio de GitHub) | Cada `git push` despliega. Fluid compute activo (por defecto). |
 | Framework | Next.js (la versión ya instalada en el repo, 16.x), App Router, TypeScript estricto | Route Handlers como API. |
 | Archivos | **Vercel Blob**, store **privado** (`@vercel/blob`) | Las facturas contienen datos de clientes: store privado, lectura solo desde nuestras funciones. Subida desde el navegador con `upload()` de `@vercel/blob/client` y una ruta `handleUpload`. El acceso (privado/público) **no se puede cambiar** después de crear el store. |
-| Base de datos | **Postgres de Neon** instalado desde el **Marketplace de Vercel** | "Vercel Postgres" como producto propio ya no existe; Neon es la opción integrada. Vercel inyecta las variables de conexión en el proyecto. |
-| ORM | Prisma 7 con driver adapter de Postgres (`@prisma/adapter-pg` o `@prisma/adapter-neon`) | Lee la guía oficial de Prisma 7 + Neon antes de elegir. Prisma 7 usa `prisma.config.ts` y un cliente generado en carpeta propia. Hay que ejecutar `prisma generate` en el build de Vercel (script `postinstall` o `build`). |
+| Base de datos | **Cloud Firestore** (proyecto de Firebase), acceso **solo desde el servidor** con `firebase-admin` | NoSQL de documentos. La cuenta de servicio se salta las reglas de seguridad, así que las **reglas de Firestore deben quedar en "denegar todo"**: ningún navegador accede directo a los datos. Los enteros de JavaScript se guardan como enteros de 64 bits (los pesos COP no pierden precisión). |
+| Autenticación | **Firebase Authentication** con correo y contraseña | Inicio de sesión en el navegador con `firebase/auth`; el servidor intercambia el ID token por una **cookie de sesión** (`createSessionCookie`) y la verifica en cada ruta de API con `verifySessionCookie`. |
 | OCR | `tesseract.js` 7 + `@tesseract.js-data/spa` | WASM puro. Los datos de idioma vienen del paquete npm, con `langPath` local; hay que **incluirlos en el bundle de la función** con `outputFileTracingIncludes`. |
 | Imagen | `sharp` | Preprocesado de reintento. Binarios nativos: `serverExternalPackages`. |
 | Validación | `zod` 4 | Esquemas y reglas de negocio. |
@@ -78,30 +78,33 @@ Si vas a escribir algo de esta lista, para y revisa la documentación:
 La lógica de OCR, extracción y validación sí se probó con 100 facturas. Lo siguiente **no se ha probado** en conjunto y puede fallar; si falla, explica el motivo y la corrección:
 
 - Next.js 16 (con `cacheComponents`) + tesseract.js + `sharp` **dentro de una función de Vercel**: rutas de WASM y `langPath`, tamaño del bundle (límite 250 MB sin comprimir), arranque en frío.
-- Prisma 7 + driver adapter de Postgres contra Neon desde funciones serverless (conexiones: usa la cadena **agrupada/pooled** en runtime y la **sin agrupar** para `db push`).
+- `firebase-admin` + Next.js 16 dentro de funciones de Vercel (¿necesita `serverExternalPackages`?, arranque en frío, la clave privada con `\n` en variables de entorno de Vercel).
 - Subida directa a Blob con `upload()` de ~1000 archivos (~90 MB): concurrencia del navegador, reintentos, límites del plan.
-- El reclamo de lotes concurrentes sin procesar dos veces el mismo archivo (`FOR UPDATE SKIP LOCKED`).
+- El reclamo de lotes concurrentes sin procesar dos veces el mismo archivo (transacción de Firestore con consulta; comportamiento bajo contención).
 - El tiempo con 1000 imágenes en 1 vCPU por invocación: **mídelo** (no hay estimación fiable; puede ser claramente mayor que los 4–12 min de la prueba local con varios núcleos).
-- Costos/cuotas del plan Hobby (Blob, CPU activa, Neon): consúltalos y repórtalos con números, no los supongas.
+- Costos/cuotas del plan Hobby de Vercel (Blob, CPU activa) y del plan gratuito de Firestore (recuerdo límites diarios de lecturas, escrituras y borrados del orden de decenas de miles, pero **verifícalo en la documentación vigente**): repórtalos con números medidos, no los supongas. Una corrida de 1000 facturas hace varios miles de lecturas y escrituras; varias corridas de prueba el mismo día pueden agotar la cuota diaria.
 
 ## 5. Fases
 
 ### Fase 0 — Cuentas y conexiones (PREGUNTAR, no asumir)
 
-Esta fase es obligatoria y va **antes de escribir cualquier código de base de datos o de Blob**. El estudiante debe crear sus recursos; tú lo guías.
+**Estado: completada para este repositorio** (Firebase, Blob y variables creados por el estudiante; `scripts/probar-conexion.ts` en verde). Para otro estudiante o un entorno nuevo, esta fase es obligatoria y va **antes de escribir cualquier código de base de datos o de Blob**. El estudiante crea sus recursos; tú lo guías y **nunca inventas ni escribes a mano valores de credenciales**.
 
-1. Pregúntale, uno por uno, y espera su respuesta:
-   - URL del repositorio de GitHub y si ya tiene el proyecto de Vercel creado/enlazado.
-   - Plan de Vercel (Hobby o Pro): determina `maxDuration` (300 s / 800 s) y la CPU (1 vCPU / hasta 2).
-   - Región de las funciones (sugerencia: la más cercana al estudiante; el store de Blob y la base de datos deben quedar **en la misma región** o cercanas).
-2. Guíalo para: importar el repo en Vercel (Git integration) → **Storage / Marketplace → Neon (Postgres)** → **Storage → Blob, store privado** → conectar ambos al proyecto en los entornos Development, Preview y Production.
-3. Trae las variables al equipo local con `vercel link` y `vercel env pull .env.local`. **No inventes ni escribas valores a mano**. Comprueba (sin imprimir secretos) qué nombres de variable aparecieron (p. ej. `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `BLOB_READ_WRITE_TOKEN`, `BLOB_STORE_ID`: confirma los nombres reales) y documéntalos en `.env.example`. `BLOB_READ_WRITE_TOKEN` hace falta para emitir tokens de subida desde el navegador.
-4. Verifica que `.env*` esté en `.gitignore` **antes** de que existan los archivos con secretos.
-5. Escribe `scripts/probar-conexion.ts` que ejecute `SELECT 1` contra Postgres y liste el store de Blob (`list({ limit: 1 })`) e imprima éxito o el error de cada uno. **No continúes hasta que funcione.**
+1. Pregunta, uno por uno: URL del repositorio de GitHub; si el proyecto de Vercel ya está creado y enlazado; plan de Vercel (Hobby o Pro: determina `maxDuration` 300 s / 800 s y la CPU).
+2. Guíalo para crear: proyecto en **Firebase** → **Firestore Database** (modo producción, región cercana a las funciones de Vercel; la ubicación no se puede cambiar) → **Authentication → Método de acceso → Correo electrónico/contraseña** → una **app web** (configuración pública) → **Cuentas de servicio → Generar nueva clave privada** (JSON secreto) → en Vercel, **Storage → Blob, store privado** conectado al proyecto.
+3. Variables en `.env` (copia `.env.example`; los nombres son estos, y la clave privada lleva los saltos de línea escritos como `\n`):
+   - Blob: `BLOB_STORE_ID`, `BLOB_READ_WRITE_TOKEN`.
+   - Firebase web (públicas por diseño): `NEXT_PUBLIC_FIREBASE_API_KEY`, `..._AUTH_DOMAIN`, `..._PROJECT_ID`, `..._STORAGE_BUCKET`, `..._MESSAGING_SENDER_ID`, `..._APP_ID`.
+   - Firebase Admin (secretas, solo servidor): `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`. Del JSON de la cuenta de servicio solo se necesitan esos tres campos; no copies el resto.
+   - Las mismas variables se definen en Vercel (Settings → Environment Variables) para Production, Preview y Development.
+4. Verifica que `.env*` esté en `.gitignore` **antes** de que existan los archivos con secretos (con la excepción `!.env.example`).
+5. `scripts/probar-conexion.ts` escribe, lee y borra un documento temporal en Firestore, lista usuarios de Authentication y lista el almacén de Blob; imprime éxito o el error de cada uno. **No continúes hasta que funcione.**
 
-Problemas conocidos para explicar si falla: variables no conectadas al entorno correcto; usar la URL agrupada para `db push` (o al revés); contraseña con caracteres especiales sin codificar; token de Blob ausente en local; la base de datos "dormida" de Neon que tarda unos segundos en la primera conexión.
+Problemas conocidos para explicar si falla: clave privada con saltos de línea mal escritos (debe ser `\n` literal dentro de comillas dobles); Firestore sin crear o con otra ubicación; Firestore API deshabilitada en Google Cloud; variables no definidas en el entorno correcto de Vercel; token de Blob ausente en local.
 
-Verificación: `npx tsx scripts/probar-conexion.ts` imprime "Postgres OK" y "Blob OK".
+**Si una credencial se imprime o se pega por error en un chat, un log o un commit, considérala comprometida:** genera una nueva clave privada en Firebase, borra la anterior (por su `private_key_id`), actualiza `.env` y Vercel.
+
+Verificación: `npx tsx scripts/probar-conexion.ts` imprime "Firestore OK", "Auth OK" y "Blob OK".
 
 ### Fase 1 — Proyecto base y primer despliegue
 
@@ -110,7 +113,9 @@ Verificación: `npx tsx scripts/probar-conexion.ts` imprime "Postgres OK" y "Blo
 - Estructura sugerida:
   ```
   src/app/                    páginas y Route Handlers
-  src/lib/db.ts               cliente Prisma (singleton en globalThis para evitar duplicados con HMR)
+  src/lib/firebase/admin.ts   Firebase Admin (Firestore y Auth), solo servidor
+  src/lib/firebase/cliente.ts Firebase Auth en el navegador (variables NEXT_PUBLIC_*)
+  src/lib/auth/sesion.ts      cookie de sesión y `exigirUsuario(request)`
   src/lib/blob.ts             utilidades de Blob (rutas, lectura de un archivo)
   src/lib/ocr/                motor tesseract, extractor, validadores, tipos
   src/lib/procesamiento/      lotes, reclamo de archivos, finalización
@@ -118,36 +123,50 @@ Verificación: `npx tsx scripts/probar-conexion.ts` imprime "Postgres OK" y "Blo
   scripts/                    probar-conexion, verificar, generar-facturas (profesor)
   ```
 - Configura `serverExternalPackages` (`tesseract.js`, `sharp`) y `outputFileTracingIncludes` para los datos de idioma de `@tesseract.js-data/spa`.
-- Añade `prisma generate` al flujo de build.
+- Comprueba en la documentación de Next 16 si `firebase-admin` y `@vercel/blob` requieren entrar en `serverExternalPackages`.
 - Haz el **primer despliegue ahora** (push a GitHub) aunque la página sea trivial: así los problemas de despliegue aparecen pronto y no al final.
 
 Verificación: `npm run dev` abre la página inicial; `npm run build` termina sin errores; el despliegue de Vercel queda en verde y la URL abre la página.
 
-### Fase 2 — Modelo de datos
+### Fase 2 — Modelo de datos (Firestore)
 
-Con Prisma (usa `prisma db push` en clase contra la URL **sin agrupar**; explica que en producción se usarían migraciones). Considera crear una *branch* de Neon para desarrollo si el estudiante la quiere, para no mezclar datos de pruebas con producción.
+Firestore es de **documentos**, no relacional: aquí el diseño parte de qué consultas necesitamos y de cómo garantizar **unicidad** (no hay `UNIQUE`): la unicidad se logra usando el valor único como **ID del documento** y creando el documento dentro de una **transacción**. Explícaselo al estudiante frente al modelo relacional que ya conoce.
 
-Tablas mínimas (nombres en `snake_case` con `@@map`):
+Colecciones (campos en `camelCase`; importes COP como **enteros**, nunca decimales; fechas como texto `yyyy-mm-dd` y marcas de tiempo como `Timestamp`):
 
-- `clientes`: `id`, **`documento` único** (NIT sin puntos ni guion, sin dígito de verificación), `dv`, `nombre`, `creado_en`.
-- `facturas`: `id`, **`numero` único**, `fecha`, `proveedor` (razón social), `nit_proveedor`, `cliente_id` (nullable: si el documento no se pudo leer, queda en revisión), `subtotal` (valor antes de IVA), `iva`, `impoconsumo` (0 si no aplica), `total` (enteros en COP), `estado` (`aceptada` | `revision`), `motivos` (texto), `archivo` (nombre original), `blob_pathname` (ruta de la imagen en Blob), `hash_archivo` (SHA-256, **único**), `confianza_ocr`, `proceso_id`.
-- `items_factura`: `id`, `factura_id`, `descripcion`, `cantidad`, `precio_unitario`, `subtotal`.
-- `procesos`: `id`, `carpeta` (solo el nombre que mostró el navegador), `estado` (`en_cola` | `subiendo` | `ejecutando` | `terminado` | `error`), `total_archivos`, `procesados`, `aceptadas`, `en_revision`, `duplicadas`, `clientes_nuevos`, `clientes_existentes`, `inicio`, `fin`, `ruta_excel` (pathname en Blob).
-- **`archivos`** (la cola de trabajo, nueva): `id`, `proceso_id`, `blob_pathname` (único por proceso), `nombre`, `estado` (`pendiente` | `procesando` | `ok` | `error`), `intentos`, `reclamado_en`, `error`.
+- `clientes/{documento}`: `documento` (NIT sin puntos ni guion ni DV; es el ID, así que no puede haber dos), `dv`, `nombre`, `creadoEn`, `primerProcesoId`.
+- `facturas/{hashArchivo}`: el ID es el **SHA-256** de la imagen (siempre existe, aunque el OCR falle) → el mismo archivo nunca se guarda dos veces. Campos: `numero`, `fecha` (emisión), `proveedor` (razón social), `nitProveedor`, `clienteDocumento` (`null` si no se pudo validar: queda en revisión y **no se crea cliente**), `subtotal` (valor antes de IVA), `iva`, `impoconsumo` (0 si no aplica), `total`, `estado` (`aceptada` | `revision`), `motivos` (lista de textos), `archivo` (nombre original), `blobPathname`, `confianzaOcr`, `procesoId`, `uid` (dueño), `creadoEn`, e **`items`** (lista de `{ descripcion, cantidad, precioUnitario, subtotal }`; van **embebidos** en la factura porque siempre se leen juntos y son pocos; reemplaza a la tabla `items_factura`).
+- `indices_numero/{numero}`: `{ hashArchivo }`. Documento auxiliar que hace único el **número de factura**: se crea en la misma transacción que la factura.
+- `procesos/{procesoId}`: `uid`, `carpeta` (solo el nombre que mostró el navegador), `estado` (`en_cola` | `subiendo` | `ejecutando` | `terminado` | `error`), `totalArchivos`, `inicio`, `fin`, `rutaExcel` (pathname en Blob).
+- `procesos/{procesoId}/archivos/{id}` (la **cola de trabajo**): `blobPathname`, `nombre`, `estado` (`pendiente` | `procesando` | `ok` | `error`), `resultado` (`aceptada` | `revision` | `duplicada` | `error`), `clienteNuevo` (booleano), `intentos`, `error`, y **`disponibleDesde`** (milisegundos de época): `0` mientras espera, `ahora + 5 min` mientras alguien lo procesa (un *arrendamiento* que caduca solo si la función se cae) y `Number.MAX_SAFE_INTEGER` cuando termina. Así la cola se consulta con **un solo campo** (`where("disponibleDesde", "<=", ahora)`) y no hace falta un índice compuesto.
 
-Los importes de COP son enteros: usa `Int` (o `BigInt` si lo justificas), nunca `Float`.
+Los contadores de avance **no se guardan** en el documento del proceso (un documento tiene un límite de escrituras sostenidas por segundo y se desincroniza si una función se cae): se calculan con consultas de agregación `count()` sobre `archivos` y `facturas`.
 
-Verificación: las tablas existen en el panel de Neon (o con `prisma studio`); `scripts/probar-conexion.ts` puede contar filas de `clientes`.
+Reglas de seguridad de Firestore: **denegar todo** (`allow read, write: if false;`). Todo el acceso pasa por el servidor. Comprueba en la consola que no queden las reglas del "modo de prueba", que dejan la base abierta y caducan a los 30 días.
+
+Si una consulta pide un índice compuesto, Firestore devuelve un enlace para crearlo en el mensaje de error: explícalo y documéntalo.
+
+Verificación: `scripts/probar-conexion.ts` sigue en verde; las colecciones aparecen en la consola de Firebase tras la primera escritura real (Fase 6); una petición REST anónima a Firestore con la `apiKey` pública **es rechazada** (reglas cerradas).
+
+### Fase A — Autenticación con Firebase (correo y contraseña; antes de la Fase 3)
+
+- **Cliente** (`src/lib/firebase/cliente.ts`, `/login`): `signInWithEmailAndPassword` de `firebase/auth` con las variables `NEXT_PUBLIC_*`. Sin página de registro.
+- **Sesión en el servidor**: el cliente envía el ID token a `POST /api/sesion`; el servidor llama a `createSessionCookie(idToken, { expiresIn })` y fija una cookie `httpOnly`, `secure`, `sameSite=lax`. `DELETE /api/sesion` la borra (cerrar sesión). Lee la documentación vigente de Next 16 para `cookies()` (es asíncrona).
+- **`exigirUsuario(request)`** verifica la cookie con `verifySessionCookie(cookie, true)` (revocación incluida) y devuelve `uid` y correo, o responde 401. **Todas** las rutas de API la usan (`/api/procesos/*`, `/api/blob/subir`, descargas), y cada proceso, factura y archivo pertenece a un `uid`: un usuario solo ve lo suyo. `proxy.ts` solo hace una comprobación **optimista** (redirige a `/login` si no hay cookie) porque no es el lugar para verificaciones completas; la verificación real está en cada Route Handler.
+- **Quién puede entrar:** la `apiKey` es pública, así que cualquiera podría llamar al registro de Firebase. Crea los usuarios a mano en la consola (Authentication → Usuarios), desactiva el registro libre si la consola lo permite (verifica el ajuste vigente) y, además, `POST /api/sesion` solo acepta correos de una lista `USUARIOS_PERMITIDOS` (variable de entorno, separada por comas).
+- Pruebas: un usuario de prueba creado en la consola; sin cookie, las rutas devuelven 401.
+
+Verificación: iniciar sesión con el usuario de prueba, ver la página protegida, cerrar sesión, y comprobar con `curl` que `/api/procesos` responde 401 sin cookie.
 
 ### Fase 3 — Selección y subida de la carpeta a Blob
 
 El navegador no entrega rutas reales del disco, y ahora el servidor ni siquiera está en el computador del usuario. Por eso:
 
 - La interfaz usa `<input type="file" webkitdirectory multiple>` para elegir la carpeta. Filtra en el cliente `.png/.jpg/.jpeg` y muestra el conteo ("1000 imágenes encontradas") y el tamaño total. Campo opcional **"procesar solo las primeras N"** para probar rápido con 20–50 facturas.
-- `POST /api/procesos` crea el registro en `procesos` (estado `subiendo`) y devuelve el `id`.
+- `POST /api/procesos` (exige sesión) crea el documento en `procesos` (estado `subiendo`, con el `uid` del usuario) y devuelve el `id`.
 - `POST /api/blob/subir` es la ruta `handleUpload` que **emite tokens de subida**. Debe validar: que exista un proceso en estado `subiendo`, que la ruta empiece por `procesos/<id>/`, que el tipo sea imagen PNG/JPG y un tamaño máximo razonable. Lee la documentación vigente de `@vercel/blob` para la forma exacta. No dependas de `onUploadCompleted` (no se dispara en local sin túnel): al terminar las subidas, el servidor lista el prefijo con `list()`.
 - El cliente sube con `upload()` de `@vercel/blob/client`, con concurrencia limitada (≈6), barra de progreso y reintentos por archivo.
-- Esto reemplaza al antiguo explorador de carpetas del servidor: **desaparece el riesgo de recorrer el disco del servidor** (explica el cambio de modelo de seguridad), pero aparece otro: cualquiera con la URL podría gastar cuota de Blob/CPU. Ver "Protección de acceso" en la Fase D.
+- Esto reemplaza al antiguo explorador de carpetas del servidor: **desaparece el riesgo de recorrer el disco del servidor** (explica el cambio de modelo de seguridad), pero aparece otro: cualquiera con la URL podría gastar cuota de Blob, Firestore y CPU. Por eso la Fase A (autenticación) va **antes** de esta fase y las rutas exigen sesión.
 
 Verificación: elegir la carpeta, subir 20 imágenes y ver en el panel de Blob los 20 archivos bajo `procesos/<id>/`.
 
@@ -189,15 +208,15 @@ Verificación: una ruta o script de prueba procesa 20 facturas **ya subidas a Bl
 
 ### Fase 6 — Procesamiento por lotes, guardado en base de datos y avance
 
-El estado vive en Postgres, no en memoria. Flujo:
+El estado vive en Firestore, no en memoria. Todas las rutas exigen sesión y comprueban que el proceso es del usuario. Flujo:
 
-1. `POST /api/procesos/[id]/iniciar`: lista el prefijo `procesos/<id>/` en Blob, inserta una fila en `archivos` por imagen (estado `pendiente`, `ON CONFLICT DO NOTHING`), fija `total_archivos` (respetando `limite`) y pasa el proceso a `ejecutando`. Responde de inmediato.
-2. `POST /api/procesos/[id]/lote`: **reclama** atómicamente hasta N archivos pendientes con SQL crudo: `UPDATE archivos SET estado='procesando', reclamado_en=now() WHERE id IN (SELECT id FROM archivos WHERE proceso_id=$1 AND (estado='pendiente' OR (estado='procesando' AND reclamado_en < now() - interval '5 minutes')) ORDER BY id LIMIT $2 FOR UPDATE SKIP LOCKED) RETURNING *`. Así dos invocaciones concurrentes nunca toman el mismo archivo, y los que quedaron "procesando" por una función caída se recuperan. Procesa cada archivo (OCR → extraer → validar) y lo guarda. Responde con el avance.
+1. `POST /api/procesos/[id]/iniciar`: lista el prefijo `procesos/<id>/` en Blob, crea un documento en `procesos/<id>/archivos` por imagen (estado `pendiente`, `disponibleDesde: 0`; el ID del documento sale de la ruta del blob, así que repetir la llamada no duplica), fija `totalArchivos` (respetando `limite`) y pasa el proceso a `ejecutando`. Responde de inmediato. (Un lote de escritura admite 500 operaciones: usa `BulkWriter` o varios lotes para 1000 archivos.)
+2. `POST /api/procesos/[id]/lote`: **reclama** hasta N archivos dentro de **una transacción de Firestore**: lee `archivos` con `where("disponibleDesde", "<=", ahora).orderBy("disponibleDesde").limit(N)` y, para cada uno, actualiza `estado: "procesando"`, `intentos + 1` y `disponibleDesde: ahora + 5 min`. Dos invocaciones concurrentes nunca toman el mismo archivo (la transacción se reintenta si hay conflicto) y los que quedaron "procesando" por una función caída vuelven a estar disponibles cuando caduca el arrendamiento. Procesa cada archivo (OCR → extraer → validar) y lo guarda. Responde con el avance.
 3. El **cliente** (la página) ejecuta un bucle con 3–4 llamadas a `/lote` concurrentes hasta que no quedan pendientes. Si el usuario cierra la pestaña, al volver a abrir el proceso el bucle **continúa** donde quedó (todo es idempotente). Cron/Vercel Workflow quedan como mejora opcional para no depender del navegador abierto.
-4. `GET /api/procesos/[id]` devuelve el avance (`procesados / total`, aceptadas, en revisión, duplicadas, clientes nuevos/existentes, tiempo). La página consulta cada segundo. SSE es una mejora opcional.
-5. Cuando no quedan pendientes ni procesando, `POST /api/procesos/[id]/finalizar` (idempotente) cierra el proceso y dispara la Fase 7.
+4. `GET /api/procesos/[id]` devuelve el avance calculado con `count()` (procesados / total, aceptadas, en revisión, duplicadas, clientes nuevos y existentes, tiempo). La página consulta cada segundo. SSE es una mejora opcional.
+5. Cuando no quedan archivos pendientes ni en proceso, `POST /api/procesos/[id]/finalizar` (idempotente) cierra el proceso y dispara la Fase 7.
 
-Por cada factura, en **una transacción**: calcula `hash_archivo`; si ya existe (mismo `numero` o mismo hash), **omite** y cuéntala como duplicada; si el documento del cliente es válido, haz `upsert` del cliente por `documento` (no sobrescribas el nombre de un cliente ya existente); inserta factura e ítems; marca el `archivo` como `ok`.
+Por cada factura, en **una transacción de Firestore** (todas las lecturas van **antes** de las escrituras): lee `facturas/{hashArchivo}` y `indices_numero/{numero}`; si alguno existe, **omite** y marca el archivo como `duplicada`; si el documento del cliente pasa el dígito de verificación, lee `clientes/{documento}` y lo **crea solo si no existe** (nunca sobrescribas el nombre de un cliente existente; `clienteNuevo` indica cuál fue el caso); crea la factura (con sus ítems embebidos) y el índice del número; marca el archivo como `ok`. Como el ID del cliente es su documento, es **imposible** que existan dos clientes con el mismo documento, aunque dos lotes concurrentes lo intenten a la vez.
 
 Un error en una imagen **no detiene el lote**: se registra en `archivos.error`, se reintenta hasta un máximo de intentos y, si sigue fallando, la factura queda en `revision` con el motivo.
 
@@ -216,11 +235,11 @@ Al finalizar el proceso, genera con `exceljs` **a partir de la base de datos** (
 - Guarda el pathname en `procesos.ruta_excel`. Como el store es privado, expón `GET /api/procesos/[id]/excel`, que lee el blob con el SDK y lo devuelve como descarga. La interfaz muestra "Excel disponible: descargar".
 - Cuida memoria y tiempo con 1000 filas (modo normal de `exceljs` es suficiente; no necesitas *streaming* a este tamaño, pero compruébalo).
 
-Verificación: descargar el Excel desde la interfaz; la suma de la columna `total` coincide con la consulta SQL.
+Verificación: descargar el Excel desde la interfaz; la suma de la columna `total` coincide con la agregación `sum()` de Firestore sobre `facturas`.
 
 ### Fase 8 — Interfaz y verificación final
 
-- Página principal: estado de las conexiones (Postgres y Blob), selector de carpeta, botón **Procesar**, barras de subida y de procesamiento.
+- Página principal: estado de las conexiones (Firestore, Auth y Blob) y del usuario con sesión iniciada, selector de carpeta, botón **Procesar**, barras de subida y de procesamiento.
 - Página de resultados: tabla de facturas con filtro por `estado`, enlace al Excel y a la imagen original (servida por una ruta nuestra desde el Blob privado).
 - Opcional (mejora): **cola de revisión manual**, donde el usuario corrige una factura en `revision` y la aprueba.
 - `npm run verificar -- <ruta de verdad.json>`: compara la base de datos con el archivo de respuestas correctas (si el profesor lo entrega) e imprime: facturas y clientes en base de datos, exactitud por campo, aceptadas con error no detectado, **clientes que no existen en la verdad** (deben ser 0) y si se cumplen 1000 facturas / 850 clientes.
@@ -233,11 +252,11 @@ Se trabaja en paralelo con las demás fases (primer despliegue en la Fase 1), pe
 
 - Variables de entorno definidas en Production, Preview y Development; ningún secreto en el repo (`git log -p` sin secretos).
 - `maxDuration` configurado en las rutas de lote y finalización según el plan; tamaño de lote y concurrencia justificados con las mediciones de la Fase 5.
-- **Autenticación (decisión pendiente, depende de la base de datos):** Vercel **no trae un producto propio de login de usuarios**. Opciones: **Clerk** (integración nativa del Marketplace de Vercel), **Better Auth** (autoalojado, guarda usuarios en nuestra propia base de datos; encaja con Neon/Postgres, correo y contraseña habilitados), **Auth0**, o **Firebase Authentication** si la base de datos pasa a Firebase (correo y contraseña de serie). Antes de implementar, comprueba en la documentación vigente qué soporta cada una. Todas las rutas de la API (`/api/procesos/*`, `/api/blob/subir`, descargas) deben exigir sesión y **cada proceso pertenece a un usuario**, porque los endpoints gastan cuota de Blob, base de datos y CPU. La protección de despliegue de Vercel protege el acceso a los despliegues (equipo), no sirve como login de usuarios finales. Como mínimo provisional: contraseña compartida `ACCESS_PASSWORD` comprobada en `proxy.ts`.
+- **Autenticación:** decidida (Firebase Authentication, ver Fase A). Comprueba en producción que ninguna ruta de API responde sin sesión y que `USUARIOS_PERMITIDOS`, `FIREBASE_ADMIN_PRIVATE_KEY` y el resto de variables están definidas en Vercel. Revisa que las reglas de Firestore sigan en "denegar todo".
 - Los blobs de producción se borran o se conservan según una política explícita (p. ej. borrar las imágenes de procesos antiguos); decide con el estudiante y documéntalo.
 - Registro de errores: revisa los *runtime logs* de Vercel tras la corrida completa y reporta cualquier 504, 413 o error de conexión a la base de datos.
 
-Verificación: la corrida completa en producción sin errores en los logs, y una nota con el uso de cuota (Blob, CPU activa, Neon) que dejó.
+Verificación: la corrida completa en producción sin errores en los logs, y una nota con el uso de cuota (Blob, CPU activa en Vercel; lecturas, escrituras y borrados en Firestore; usuarios en Authentication) que dejó.
 
 ### Fase G — Generador de facturas (SOLO PROFESOR; los estudiantes reciben un zip)
 
@@ -256,4 +275,4 @@ Verificación: el resumen se imprime con las comprobaciones en OK y se revisan a
 
 ## 6. Cuando termines todo
 
-Entrega al estudiante: qué hace cada carpeta, cómo ejecutar en local (`vercel env pull .env.local` y `npm run dev`), cómo desplegar, cómo correr las pruebas, qué resultados obtuvo con la carpeta completa en la URL de producción (con números reales: tiempos, cuota usada, exactitud) y **qué no pudiste verificar**.
+Entrega al estudiante: qué hace cada carpeta, cómo ejecutar en local (copiar `.env.example` a `.env`, rellenarlo y `npm run dev`), cómo desplegar, cómo correr las pruebas, qué resultados obtuvo con la carpeta completa en la URL de producción (con números reales: tiempos, cuota usada, exactitud) y **qué no pudiste verificar**.

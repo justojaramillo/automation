@@ -42,3 +42,4 @@ next-env.d.ts
 
 # facturas sintéticas generadas (se regeneran con npm run generar:facturas)
 /salida/
+!.env.example
