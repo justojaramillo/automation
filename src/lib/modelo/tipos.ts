@@ -71,6 +71,8 @@ export interface Proceso {
   inicio: Timestamp;
   fin: Timestamp | null;
   rutaExcel: string | null;
+  /** Marca (ms) de quien está generando el Excel: evita que dos clientes lo hagan a la vez. */
+  finalizandoDesde?: number;
 }
 
 /** procesos/{procesoId}/archivos/{id}: la cola de trabajo. */
@@ -80,6 +82,10 @@ export interface ArchivoCola {
   estado: EstadoArchivo;
   resultado: ResultadoArchivo | null;
   clienteNuevo: boolean;
+  /** El cliente ya existía (ya estaba en `clientes`). */
+  clienteExistente?: boolean;
+  /** SHA-256 de la imagen (ID de la factura); se conoce una vez descargada. */
+  hashArchivo?: string;
   intentos: number;
   error: string | null;
   /** 0 = espera; ahora+5min = arrendado; MAX_SAFE_INTEGER = terminado. */

@@ -24,11 +24,21 @@ El objetivo es que **entienda lo que construye**: explica brevemente el porqué 
 - El Excel y `verificar` leen todas las facturas del proceso (N lecturas): contarlas en el presupuesto.
 - Reprocesar la misma carpeta vuelve a gastar lecturas (el hash evita duplicar datos, no consumo): documenta cuántas se gastaron en cada prueba.
 
-**Fase 1 (2026-11-06)**: proyecto base limpio (`src/app`, sin fuentes de Google, alias `@/*` → `src/*`), `serverExternalPackages: ["tesseract.js"]` (`firebase-admin` y `sharp` ya vienen excluidos por defecto en Next 16) y `outputFileTracingIncludes` para los datos de `@tesseract.js-data/spa/4.0.0_best_int`. Ruta temporal `/api/salud` (con `connection()`; `dynamic = "force-dynamic"` no es compatible con `cacheComponents`) que comprueba datos de tesseract, `sharp` y variables. Verificado en local y en Vercel (`datosTesseractSpa: true`, `sharp: true`).
+**Avance (2026-11-06, misma sesión)**: construidas las fases 1, 2, A, 4 y el código de las fases 3, 5, 6, 7 y 8. Resumen técnico:
+- Fase 1: `src/app`, alias `@/*` → `src/*`, `serverExternalPackages: ["tesseract.js"]` (`firebase-admin` y `sharp` ya vienen excluidos por defecto en Next 16), `outputFileTracingIncludes` para los datos de `@tesseract.js-data/spa/4.0.0_best_int`, `engines.node = 24.x`. Con `cacheComponents`, `export const dynamic` no existe (usar `await connection()`); `maxDuration` sí funciona. Verificado en Vercel (`/api/salud`: datos de tesseract y `sharp` OK).
+- Fase 2: tipos en `src/lib/modelo/tipos.ts`; `npx tsx scripts/verificar-reglas.ts` confirma reglas cerradas (403 anónimo).
+- Fase A: `src/lib/auth/sesion.ts` (`exigirUsuario`), `/api/sesion`, `/login`, `src/proxy.ts`. **Requiere `USUARIOS_PERMITIDOS`** (correos separados por comas) en `.env` y en Vercel; sin ella nadie entra. Verificado: sin cookie las rutas dan 401 y `/` redirige a `/login`. **Falta probar el login real** (necesita el usuario de prueba).
+- Fase 4: extractor/validador puros en `src/lib/ocr/` con 43 pruebas. Medido con 40 facturas de otra semilla: 39 aceptadas, 0 errores no detectados (`scripts/leer-carpeta.ts`).
+- Fases 3/5/6/7/8: subida directa a Blob (`/api/blob/subir`), cola con arrendamiento (`cola.ts`), lote (`lote.ts`), guardado transaccional (`guardar.ts`), avance con `count()`, Excel (`src/lib/excel/generar.ts`), páginas `/` y `/procesos/[id]`. Prueba de extremo a extremo del servidor contra Firestore/Blob reales (`scripts/probar-pipeline.ts`): 10/10 guardadas, 9 clientes, suma del Excel = `sum()` de Firestore = verdad, reproceso con otra ruta: 10/10 duplicadas sin duplicar nada (4,5 s: el hash se mira antes del OCR).
+- Desviación respecto al texto original: si el NÚMERO de una factura ya existe pero el archivo es distinto (hash distinto), no se descarta como duplicada: se guarda en `revision` con el motivo (podría ser un error del OCR y descartarla perdería una factura). Solo el mismo hash es `duplicada`.
+- Índices: no se necesita ninguno compuesto en el flujo. (Un `sum()` filtrado por `procesoId` sí lo pediría; el script de prueba suma sobre toda la colección.)
 
 **Pendiente**
-1. Crear un usuario de prueba en Firebase → Authentication → Usuarios (hoy hay 0) antes de la Fase A.
-2. ~~Proyecto de Vercel~~ hecho: plan **Hobby** (`maxDuration` 300 s), variables definidas y `/api/salud` en producción en verde (Node 24, sin variables faltantes). URL: https://automation-six-chi.vercel.app
+1. Crear el usuario de prueba en Firebase → Authentication y definir `USUARIOS_PERMITIDOS` en `.env` y en Vercel; luego probar login → subir → procesar → Excel en la URL de producción y medir tiempos/errores en Vercel (Fase 5 en despliegue, aún NO verificada).
+2. Fase D (nota de cuota, política de borrado de blobs, revisión de logs) y `npm run verificar` (Fase 8) aún no están hechas.
+3. Corrida completa de 1000 facturas: NO hecha, por la decisión de cuota.
+
+URL de producción: https://automation-six-chi.vercel.app (plan Hobby, `maxDuration` 300 s).
 
 **Decisión del estudiante (2026-11-06)**: la clave privada de Firebase que se imprimió por error **no se rota por ahora** (proyecto de desarrollo, sin datos reales). No volver a mencionarlo como pendiente; el estudiante conoce el riesgo.
 
