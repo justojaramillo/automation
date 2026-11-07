@@ -1,10 +1,11 @@
-// Ruta TEMPORAL de la Fase 1: comprueba que, ya desplegada, la función de Vercel contiene los
+// Ruta de diagnóstico (Fase 1): comprueba que, ya desplegada, la función de Vercel contiene los
 // datos de idioma de tesseract (outputFileTracingIncludes) y que `sharp` carga. Solo devuelve
-// booleanos, ningún secreto. En la Fase A se protegerá con sesión o se eliminará.
+// booleanos y nombres, ningún secreto. Desde la Fase A exige sesión.
 
 import { access } from "node:fs/promises";
 import path from "node:path";
-import { connection } from "next/server";
+import { connection, type NextRequest } from "next/server";
+import { exigirUsuario } from "@/lib/auth/sesion";
 
 const VARIABLES_REQUERIDAS = [
   "BLOB_READ_WRITE_TOKEN",
@@ -31,10 +32,12 @@ async function existe(ruta: string): Promise<boolean> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   // Con cacheComponents las rutas se prerenderizan en el build salvo que usen algo de la petición.
   // `connection()` obliga a ejecutarla en cada petición (si no, los valores quedarían del build).
   await connection();
+  const usuario = await exigirUsuario(request);
+  if (usuario instanceof Response) return usuario;
   let sharpCarga = false;
   try {
     const { default: sharp } = await import("sharp");
