@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
 
+const OCR_ARCHIVOS = [
+  "./node_modules/@tesseract.js-data/spa/4.0.0_best_int/**/*",
+  "./node_modules/tesseract.js/**/*",
+  "./node_modules/tesseract.js-core/package.json",
+  "./node_modules/tesseract.js-core/*-lstm*",
+  "./node_modules/{bmp-js,idb-keyval,is-url,node-fetch,regenerator-runtime,wasm-feature-detect,zlibjs,whatwg-url,tr46,webidl-conversions}/**/*",
+];
+
 const nextConfig: NextConfig = {
+  // Solo para simular en local el empaquetado de Vercel (copia únicamente los archivos trazados).
+  output: process.env.NEXT_STANDALONE ? "standalone" : undefined,
   experimental: {
     agentFeedback: true,
   },
@@ -13,9 +23,12 @@ const nextConfig: NextConfig = {
   // Los datos de idioma se leen en tiempo de ejecución con una ruta calculada, así que el trazador
   // de archivos no los ve. Hay que incluirlos a mano en las funciones que hacen OCR (si no, en
   // Vercel faltan y tesseract intentaría descargarlos de internet).
+  // tesseract.js lanza su worker en un hilo aparte que carga el núcleo WASM y varias dependencias con
+  // require() dinámico: el trazador no las ve y, sin ellas, el hilo muere en silencio y la función se
+  // cuelga hasta el 504 (así falló en Vercel). Solo se incluyen las variantes *-lstm del núcleo (OEM 1).
   outputFileTracingIncludes: {
-    "/api/salud": ["./node_modules/@tesseract.js-data/spa/4.0.0_best_int/**/*"],
-    "/api/procesos/**": ["./node_modules/@tesseract.js-data/spa/4.0.0_best_int/**/*"],
+    "/api/procesos/**": OCR_ARCHIVOS,
+    "/api/salud": OCR_ARCHIVOS,
   },
   turbopack: {
     rules: {
