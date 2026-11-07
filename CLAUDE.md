@@ -6,6 +6,33 @@ El objetivo es que **entienda lo que construye**: explica brevemente el porqué 
 
 > **Cambio de arquitectura respecto a la versión anterior:** el proyecto ya no corre en el computador del usuario con XAMPP/MySQL y rutas del disco. Ahora se **despliega en Vercel**: las facturas se suben a **Vercel Blob**, los datos viven en **Firestore (Firebase)**, los usuarios se autentican con **Firebase Authentication (correo y contraseña)** y el Excel se guarda en Blob. Esto cambia cómo se selecciona la carpeta, cómo corre el trabajo largo y dónde queda el Excel (ver sección 1 y las fases).
 
+## 0. Estado actual y punto de reanudación (léelo primero en una sesión nueva)
+
+Última actualización: 2026-11-06. Repositorio: https://github.com/justojaramillo/automation (rama `main`).
+
+**Hecho y verificado**
+- Fase G (generador): `npm run generar:facturas -- --cantidad 10` produce 10 facturas colombianas (IVA 19 %, impoconsumo 4 % en móvil, 4 diseños, 3 calidades) y `salida/verdad.json`. Se revisaron a ojo 4 imágenes.
+- `src/lib/ocr/nit.ts` (dígito de verificación) con pruebas: `npm test` pasa (6 de 6).
+- Fase 0: `.env` con Firebase (web y Admin) y Vercel Blob; `npx tsx scripts/probar-conexion.ts` imprime Firestore OK, Auth OK y Blob OK. Las reglas de Firestore están cerradas (peticiones anónimas devuelven 403).
+- `src/lib/firebase/admin.ts` (Firestore y Auth, solo servidor) y `.env.example`.
+- `CLAUDE.md` migrado a Firebase (modelo de colecciones en la Fase 2, autenticación en la Fase A).
+
+**Decisión de cuota (del estudiante)**: el plan gratuito de Firestore permite **50 000 lecturas por día** (dato dado por el estudiante; las escrituras diarias del plan gratuito no se han confirmado, verifícalas). Por eso **trabajamos con pocas facturas (10–50)** y **no se procesan las 1000 completas** hasta planificarlo (esperar al día siguiente, o plan Blaze). Reglas derivadas:
+- La interfaz limita por defecto "procesar solo las primeras N" a 20 y avisa antes de pasar de 50.
+- Presupuesto aproximado por factura: ~4–5 lecturas (hash, índice de número, cliente, reclamo del archivo) y ~5 escrituras. 50 facturas ≈ 250 lecturas: no es el problema.
+- **El mayor riesgo de lecturas es el sondeo del avance**: cada consulta `count()` cuesta como mínimo 1 lectura. Consultar 5 conteos cada segundo son ~300 lecturas por minuto. Por eso: sondeo cada 3–5 s, **una sola** respuesta con todos los conteos, detener el sondeo cuando el proceso termina o la pestaña está oculta, y mostrar el contador de lecturas estimadas en los scripts de verificación.
+- El Excel y `verificar` leen todas las facturas del proceso (N lecturas): contarlas en el presupuesto.
+- Reprocesar la misma carpeta vuelve a gastar lecturas (el hash evita duplicar datos, no consumo): documenta cuántas se gastaron en cada prueba.
+
+**Pendiente antes de seguir**
+1. **Rotar la clave privada de Firebase** (se imprimió por error en la sesión del 2026-11-06): generar clave nueva en Firebase, borrar la anterior (`private_key_id` que empieza por `4fffaf57`) y actualizar `FIREBASE_ADMIN_PRIVATE_KEY` en `.env` y en Vercel. Si el estudiante ya lo hizo, vuelve a ejecutar `probar-conexion.ts`.
+2. Crear un usuario de prueba en Firebase → Authentication → Usuarios (hoy hay 0).
+3. Crear el proyecto en Vercel importando el repositorio y definir las mismas variables de `.env.example` (Production, Preview y Development). Preguntar si el plan es Hobby o Pro.
+
+**Siguiente paso sugerido** (el estudiante elige): Fase 1 (proyecto base + primer despliegue en Vercel), Fase A (login) o Fase 4 (extractor y pruebas, usando las 10 facturas y su `verdad.json`).
+
+**Cómo trabajar con `.env` en sesiones nuevas**: no lo leas, ni lo imprimas, ni lo "resumas" con `cat`, `awk`, `sed` ni `grep` que muestre valores. Para comprobar que está completo usa `npx tsx scripts/probar-conexion.ts`; si necesitas ver qué nombres hay, muestra solo la parte anterior al primer `=` de las líneas que no son comentarios y **solo si el valor no se imprime** (por ejemplo `grep -v '^#' .env | cut -d= -f1`).
+
 ## 1. Qué hace el sistema
 
 1. El usuario abre la app (desplegada en Vercel) y **elige una carpeta** de su computador con las imágenes de facturas (`.png` / `.jpg`) usando el selector de carpetas del navegador.
