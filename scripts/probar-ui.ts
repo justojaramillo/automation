@@ -37,6 +37,17 @@ async function main(): Promise<void> {
   await foto("02-seleccion");
 
   // 2. Subir y procesar
+  const sinProcesar = process.argv.includes("--sin-procesar");
+  const nImagenes = Number((await pagina.locator("text=imágenes en").first().innerText()).match(/(\d[\d.]*)/)?.[1].replace(/\./g, ""));
+  const esperados = Math.ceil(nImagenes / Number(tamLote));
+  if (sinProcesar) await pagina.route("**/api/procesos/*/lote", (r) => r.abort()); // no se hace OCR: solo subida y cola
+  // Medidor de bloqueo: retraso máximo del bucle de eventos del navegador mientras sube
+  await pagina.evaluate(() => {
+    const w = window as unknown as { __lagMax: number };
+    w.__lagMax = 0;
+    let previo = performance.now();
+    setInterval(() => { const ahora = performance.now(); w.__lagMax = Math.max(w.__lagMax, ahora - previo - 100); previo = ahora; }, 100);
+  });
   const t0 = Date.now();
   await pagina.click('[data-testid="procesar"]');
   await pagina.waitForSelector("text=Avance de los lotes");
@@ -45,9 +56,21 @@ async function main(): Promise<void> {
   const enVivo = await pagina.locator("section[aria-label*='Procesado']").first().innerText().catch(() => "(sin panel en vivo todavía)");
   console.log("en vivo:", enVivo.replace(/\s+/g, " ").slice(0, 300));
 
+  if (sinProcesar) {
+    for (;;) {
+      const r = await pagina.evaluate(async () => (await fetch("/api/metricas")).json() as Promise<{ lotes: { totalArchivos: number }[] }>);
+      const nuevos = r.lotes.filter((l) => l.totalArchivos > 0);
+      if (nuevos.length >= esperados + 0 && nuevos.reduce((a, l) => a + l.totalArchivos, 0) >= nImagenes) { console.log(`subida de ${nImagenes} imágenes en ${nuevos.length} lotes lista en ${((Date.now() - t0) / 1000).toFixed(0)} s (cola creada)`); break; }
+      if (Date.now() - t0 > 20 * 60_000) throw new Error("Tiempo agotado esperando la subida");
+      await pagina.waitForTimeout(2000);
+    }
+    const lag = await pagina.evaluate(() => (window as unknown as { __lagMax: number }).__lagMax);
+    console.log(`retraso máximo del navegador durante la subida: ${Math.round(lag)} ms (menos de ~200 ms = no se bloquea)`);
+    await foto("03b-subida-masiva");
+  }
   // Esperar a que todos los lotes terminen (el motor del layout los procesa en segundo plano)
   const fin = Date.now() + 25 * 60_000;
-  for (;;) {
+  while (!sinProcesar) {
     const r = await pagina.evaluate(async () => (await fetch("/api/metricas")).json() as Promise<{ lotes: { estado: string; totalArchivos: number }[] }>);
     const todos = r.lotes.length > 0 && r.lotes.every((l) => l.estado === "terminado");
     if (todos) { console.log(`${r.lotes.length} lotes terminados en ${((Date.now() - t0) / 1000).toFixed(0)} s`); break; }
@@ -58,6 +81,7 @@ async function main(): Promise<void> {
   await foto("04-lotes-terminados");
 
   // 3. Métricas
+  if (!sinProcesar) {
   await pagina.click("nav >> text=Métricas");
   await pagina.waitForURL(`${base}/metricas`);
   await pagina.waitForSelector("text=Calidad de la lectura");
@@ -77,6 +101,7 @@ async function main(): Promise<void> {
   await pagina.waitForTimeout(800);
   await foto("07-detalle-lote");
 
+  }
   // 5. Botón "Borrar todo": por defecto solo se comprueba el diálogo (NO se confirma: es un borrado total de la
   //    base de datos y del Blob). Con --borrar-todo se confirma de verdad.
   await pagina.click("nav >> text=Procesar facturas");
