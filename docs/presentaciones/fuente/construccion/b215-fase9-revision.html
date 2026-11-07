@@ -24,6 +24,7 @@
     <b>Cómo se usa:</b> la pestaña «Revisión» lista las pendientes; cada una abre un formulario con la imagen a la izquierda y los datos a la derecha. Lo que la máquina alcanzó a leer llega precargado, así que la persona solo corrige lo que está mal. Los totales se proponen desde los ítems (IVA 19 %, impoconsumo 4 % si aplica).<br>
     <b>La validación es la misma</b> función que usa el OCR, ejecutada en el navegador mientras se escribe; el servidor la repite al guardar (no confía en el navegador). Si no cuadra, la persona puede aun así guardar, pero debe confirmar explícitamente que revisó la imagen, y eso queda registrado.<br>
     <b>La decisión de métricas es la más importante:</b> si lo corregido a mano se sumara a «leídas correctamente», la métrica dejaría de medir la calidad de la máquina y no sabríamos si el OCR mejora o empeora. Por eso se cuenta aparte.<br>
+    <b>No es opcional:</b> de las 1000 facturas del curso, 40 traen un problema puesto a propósito y la máquina nunca las acepta: 10 con el total impreso que no cuadra, 10 con IVA al 5 % o exento, 10 con el dígito de verificación del cliente equivocado y 10 con la imagen girada (para estas, el formulario tiene botones ↺ ↻ que la giran). Así los estudiantes <b>tienen que</b> usar esta pantalla.<br>
     <b>Un error real:</b> al pasar de una factura a la siguiente, React reutilizaba el formulario y arrastraba los campos de la anterior (se podían guardar datos de una factura sobre otra). Se arregló con <code>key</code> por factura.
   </aside>
 </section>

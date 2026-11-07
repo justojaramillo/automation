@@ -40,7 +40,8 @@ function totales(f: Factura, e: Etiquetas, fila: (etiqueta: string, valor: strin
   const pct = (t: number): string => `${Math.round(t * 100)}`;
   return [
     fila(e.sub, cop(f.subtotal)),
-    fila(e.iva.replace("{p}", pct(IVA_TARIFA)), cop(f.iva)),
+    // Con tarifas distintas del 19 % (5 %, exento…) el rótulo no puede decir «19 %»: queda solo «IVA».
+    fila(f.problema === "iva-tarifa" ? e.iva.replace(/\s*\(?\{p\}\s*%\)?/, "") : e.iva.replace("{p}", pct(IVA_TARIFA)), cop(f.iva)),
     f.esMovil ? fila(e.inc.replace("{p}", pct(INC_TARIFA)), cop(f.impoconsumo)) : "",
     fila(e.total, cop(f.total), true),
   ].join("");

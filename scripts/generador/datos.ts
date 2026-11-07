@@ -18,6 +18,16 @@ export type Sector = "tecnologia" | "papeleria" | "ferreteria" | "servicios" | "
 export type Calidad = "limpia" | "media" | "mala";
 export type FormatoFecha = "dmy" | "iso" | "largo";
 
+/**
+ * Facturas con un problema DELIBERADO para que siempre necesiten a una persona (revisión manual):
+ *  - total-no-cuadra: el emisor imprimió un total distinto de subtotal + IVA + impoconsumo.
+ *  - iva-tarifa: ítems con IVA al 5 % o exentos (algo real en Colombia): el IVA no es el 19 %.
+ *  - dv-cliente: el NIT del cliente trae un dígito de verificación equivocado.
+ *  - girada: la imagen está girada 90°, 180° o 270° (el OCR no lee texto girado; una persona la gira y la lee).
+ */
+export type Problema = "total-no-cuadra" | "iva-tarifa" | "dv-cliente" | "girada";
+export const TIPOS_PROBLEMA: readonly Problema[] = ["total-no-cuadra", "iva-tarifa", "dv-cliente", "girada"];
+
 export interface Persona {
   documento: string; // 9 dígitos, sin DV
   dv: number;
@@ -70,6 +80,14 @@ export interface Factura {
   diseno: number; // 0..3
   formatoFecha: FormatoFecha;
   calidad: Calidad;
+  /** `null` en las facturas normales. */
+  problema: Problema | null;
+  /** Grados que se gira la imagen al guardarla (solo en las «giradas»). */
+  rotacion: 0 | 90 | 180 | 270;
+  /** Total aritméticamente correcto (solo en «total-no-cuadra»; `total` es el IMPRESO, equivocado). */
+  totalCorrecto?: number;
+  /** Dígito de verificación correcto del cliente (solo en «dv-cliente»; `cliente.dv` es el IMPRESO, equivocado). */
+  dvCorrecto?: number;
 }
 
 // ── Catálogos: [descripción, precio mínimo, precio máximo, cantidad máxima] ──
@@ -325,6 +343,8 @@ export function generarDatos({ cantidad, semilla }: Opciones): ConjuntoDatos {
       diseno: disenos[i],
       formatoFecha: formatos[i],
       calidad: calidades[i],
+      problema: null,
+      rotacion: 0,
     };
     return { ...parcial, cufe: calcularCufe(parcial) };
   });
@@ -334,5 +354,58 @@ export function generarDatos({ cantidad, semilla }: Opciones): ConjuntoDatos {
   mezcladas.forEach((f, i) => {
     f.archivo = `factura_${pad(i + 1, 4)}`; // la extensión depende de la calidad
   });
+  asignarProblemas(mezcladas);
   return { facturas: mezcladas, clientes };
+}
+
+/**
+ * Convierte el 4 % de las facturas (10 de cada tipo con 1000) en casos que SIEMPRE requieren revisión manual.
+ * Es DETERMINISTA y no usa el generador aleatorio: así las demás facturas quedan idénticas a las de un conjunto
+ * sin problemas. Se eligen repartidas por todo el conjunto y solo entre las de calidad legible (una factura
+ * destruida a propósito no la podría leer ni una persona). Las de «dv-cliente» se eligen entre clientes que
+ * aparecen en más de una factura, para que ese cliente exista igual (y los 850 clientes distintos se mantengan).
+ */
+export function asignarProblemas(facturas: Factura[]): void {
+  const n = facturas.length;
+  if (n < 20) return; // el conjunto pequeño de desarrollo (10 facturas) no lleva problemas
+  const porTipo = Math.max(1, Math.round(n * 0.01));
+  const usosCliente = new Map<string, number>();
+  for (const f of facturas) usosCliente.set(f.cliente.documento, (usosCliente.get(f.cliente.documento) ?? 0) + 1);
+  const elegidas = new Set<number>();
+  const clientesTocados = new Set<string>();
+
+  const valida = (i: number, tipo: Problema): boolean => {
+    const f = facturas[i];
+    if (elegidas.has(i) || f.calidad === "mala") return false;
+    if (tipo === "dv-cliente") return (usosCliente.get(f.cliente.documento) ?? 0) > 1 && !clientesTocados.has(f.cliente.documento);
+    return true;
+  };
+
+  let orden = 0;
+  for (let k = 0; k < porTipo; k++) {
+    for (const tipo of TIPOS_PROBLEMA) {
+      const objetivo = Math.floor(((k * TIPOS_PROBLEMA.length + TIPOS_PROBLEMA.indexOf(tipo) + 0.5) * n) / (porTipo * TIPOS_PROBLEMA.length));
+      let i = objetivo;
+      for (let paso = 0; paso < n && !valida(i, tipo); paso++) i = (i + 1) % n;
+      const f = facturas[i];
+      elegidas.add(i);
+      f.problema = tipo;
+      if (tipo === "total-no-cuadra") {
+        f.totalCorrecto = f.total;
+        f.total += (((orden * 7919) % 40) + 10) * 1000; // entre $10.000 y $49.000 de más, siempre distinto del correcto
+      } else if (tipo === "iva-tarifa") {
+        // Pares: el primer ítem al 5 %, los demás al 19 % (mixto). Impares: todos exentos (0 %).
+        f.items = f.items.map((it, j) => ({ ...it, tarifaIva: orden % 2 === 0 ? (j === 0 ? 0.05 : it.tarifaIva) : 0 }));
+        Object.assign(f, calcularTotales(f.items));
+      } else if (tipo === "dv-cliente") {
+        f.dvCorrecto = f.cliente.dv;
+        f.cliente = { ...f.cliente, dv: (f.cliente.dv + 1 + (orden % 8)) % 10 }; // desplazamiento 1..8: nunca coincide con el correcto
+        clientesTocados.add(f.cliente.documento);
+      } else {
+        f.rotacion = ([90, 270, 180] as const)[orden % 3];
+      }
+      f.cufe = calcularCufe(f); // el CUFE depende de los totales y del cliente impresos
+      orden++;
+    }
+  }
 }

@@ -69,7 +69,7 @@
 
 **Cómo probar sin respuestas correctas.** Con vitest: casos con texto real de cada diseño y un caso por cada lección. Para medir de verdad necesitas el `verdad.json` de un conjunto (lo tiene el profesor; `scripts/leer-carpeta.ts <carpeta> <verdad.json>` en el repositorio de referencia compara campo por campo). Sin él, mide el **porcentaje de aceptadas** y revisa a mano 20 facturas aceptadas.
 
-**Verificación.** `npm test` pasa. Referencia (repositorio de referencia, 56 pruebas): 10/10, 39/40 y 56/60 aceptadas en conjuntos de desarrollo distintos y **915/1000 (92 %) en el conjunto del curso**, con entre 0 y 3 errores sin detectar por conjunto (un dígito mal leído en el número de factura, por ejemplo, que la aritmética no puede ver).
+**Verificación.** `npm test` pasa. Referencia (repositorio de referencia, 56 pruebas): 10/10, 39/40 y 56/60 aceptadas en conjuntos de desarrollo distintos y **875/1000 (88 %) en el conjunto del curso** (con 40 facturas problemáticas puestas a propósito que siempre van a revisión; sin ellas, 875/960 = 91 %), con entre 0 y 3 errores sin detectar por conjunto (un dígito mal leído en el número de factura, por ejemplo, que la aritmética no puede ver).
 
 **Errores típicos.** Ajustar el extractor a tus 10 facturas de desarrollo y creer que ya está (con 40 facturas el extractor aceptaba el 98 %, pero con otras 60 de otra semilla bajó al 82 % hasta arreglar un patrón que no se había visto —la razón social partida con el título—, y subió a 93 %: **mide siempre con facturas que no usaste para desarrollar**); arreglar la prueba en vez del código; expresiones regulares ilegibles sin comentarios.
 

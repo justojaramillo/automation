@@ -43,6 +43,8 @@ export function FormularioFactura({ hash }: { hash: string }) {
   const [cargada, setCargada] = useState<Cargada | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [zoom, setZoom] = useState(0);
+  // Giro de la imagen en grados (lo hace el servidor): para facturas fotografiadas de lado.
+  const [giro, setGiro] = useState(0);
 
   const [numero, setNumero] = useState("");
   const [fecha, setFecha] = useState("");
@@ -150,11 +152,13 @@ export function FormularioFactura({ hash }: { hash: string }) {
             <button className={botonSecundario} onClick={() => setZoom((z) => Math.max(0, z - 1))} disabled={zoom === 0} aria-label="Alejar">−</button>
             <span className="cifra w-14 text-center">{Math.round(ZOOMS[zoom] * 100)} %</span>
             <button className={botonSecundario} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))} disabled={zoom === ZOOMS.length - 1} aria-label="Acercar">+</button>
-            <a className="ml-auto underline" href={`/api/facturas/${hash}/imagen`} target="_blank" rel="noreferrer">Abrir en otra pestaña</a>
+            <button className={botonSecundario} onClick={() => setGiro((g) => (g + 270) % 360)} aria-label="Girar a la izquierda" title="Girar a la izquierda">↺</button>
+            <button className={botonSecundario} onClick={() => setGiro((g) => (g + 90) % 360)} aria-label="Girar a la derecha" title="Girar a la derecha">↻</button>
+            <a className="ml-auto underline" href={`/api/facturas/${hash}/imagen${giro ? `?rotar=${giro}` : ""}`} target="_blank" rel="noreferrer">Abrir en otra pestaña</a>
           </div>
           <div className="max-h-[75vh] overflow-auto rounded-lg border border-borde bg-pista/40 p-2">
             {/* eslint-disable-next-line @next/next/no-img-element -- la imagen sale de una ruta autenticada, no del optimizador de Next */}
-            <img src={`/api/facturas/${hash}/imagen`} alt={`Factura ${cargada.archivo}`} style={{ width: `${ZOOMS[zoom] * 100}%`, maxWidth: "none" }} className="block" data-testid="imagen" />
+            <img src={`/api/facturas/${hash}/imagen${giro ? `?rotar=${giro}` : ""}`} alt={`Factura ${cargada.archivo}`} style={{ width: `${ZOOMS[zoom] * 100}%`, maxWidth: "none" }} className="block" data-testid="imagen" />
           </div>
           {(cargada.motivosOriginales.length > 0 ? cargada.motivosOriginales : cargada.motivos).length > 0 && (
             <div className="rounded-lg border border-aviso p-3 text-sm">

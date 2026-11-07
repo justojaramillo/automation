@@ -11,7 +11,9 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { fakerES as faker } from "@faker-js/faker";
 import { calcularDv } from "../src/lib/ocr/nit";
-import { calcularTotales, generarDatos, type Calidad, type Factura } from "./generador/datos";
+import { validar } from "../src/lib/ocr/validador";
+import { aParcial } from "../src/lib/procesamiento/correccion";
+import { calcularTotales, generarDatos, TIPOS_PROBLEMA, type Calidad, type Factura } from "./generador/datos";
 import { NOMBRES_DISENO, renderizar } from "./generador/disenos";
 
 const { values } = parseArgs({
@@ -71,8 +73,10 @@ async function main(): Promise<void> {
     await pagina.setContent(html, { waitUntil: "load" });
     const captura = await pagina.screenshot({ fullPage: true, type: "png" });
     const { datos, extension } = await degradar(captura, f.calidad);
+    // «Girada»: la imagen entera se gira (el OCR no lee texto girado; una persona la gira en pantalla y la lee).
+    const final = f.rotacion === 0 ? datos : await sharp(datos).rotate(f.rotacion, { background: { r: 255, g: 255, b: 255 } }).toBuffer();
     f.archivo = `${f.archivo}.${extension}`;
-    await writeFile(path.join(dirFacturas, f.archivo), datos);
+    await writeFile(path.join(dirFacturas, f.archivo), final);
   }
   await navegador.close();
 
@@ -101,6 +105,11 @@ async function main(): Promise<void> {
       diseno: NOMBRES_DISENO[f.diseno],
       calidad: f.calidad,
       formatoFecha: f.formatoFecha,
+      // Facturas que SIEMPRE requieren revisión manual (null en las normales). Los valores de arriba son los IMPRESOS.
+      problema: f.problema,
+      rotacion: f.rotacion,
+      totalCorrecto: f.totalCorrecto ?? null,
+      dvCorrecto: f.dvCorrecto ?? null,
     })),
   };
   await writeFile(path.join(dirSalida, "verdad.json"), JSON.stringify(verdad, null, 2), "utf8");
@@ -125,11 +134,32 @@ async function resumen(facturas: Factura[], ms: number): Promise<void> {
   if (numerosUnicos !== facturas.length) errores.push("hay números de factura repetidos");
   for (const f of facturas) {
     const t = calcularTotales(f.items);
-    if (t.subtotal !== f.subtotal || t.iva !== f.iva || t.impoconsumo !== f.impoconsumo || t.total !== f.total) errores.push(`${f.numero}: totales no cuadran`);
-    if (f.subtotal + f.iva + f.impoconsumo !== f.total) errores.push(`${f.numero}: subtotal + IVA + INC ≠ total`);
+    const sumaOk = f.subtotal + f.iva + f.impoconsumo === f.total;
+    if (f.problema === "total-no-cuadra") {
+      if (sumaOk || f.totalCorrecto !== f.subtotal + f.iva + f.impoconsumo) errores.push(`${f.numero}: el total debía quedar impreso equivocado`);
+    } else {
+      if (t.subtotal !== f.subtotal || t.iva !== f.iva || t.impoconsumo !== f.impoconsumo || t.total !== f.total) errores.push(`${f.numero}: totales no cuadran`);
+      if (!sumaOk) errores.push(`${f.numero}: subtotal + IVA + INC ≠ total`);
+    }
     if (f.esMovil !== (f.impoconsumo > 0)) errores.push(`${f.numero}: impoconsumo inconsistente con esMovil`);
-    if (calcularDv(f.cliente.documento) !== f.cliente.dv || calcularDv(f.proveedor.documento) !== f.proveedor.dv) errores.push(`${f.numero}: DV inválido`);
+    const dvClienteOk = calcularDv(f.cliente.documento) === f.cliente.dv;
+    if (f.problema === "dv-cliente" ? dvClienteOk : !dvClienteOk) errores.push(`${f.numero}: dígito de verificación del cliente ${f.problema === "dv-cliente" ? "debía ser inválido" : "inválido"}`);
+    if (calcularDv(f.proveedor.documento) !== f.proveedor.dv) errores.push(`${f.numero}: DV del proveedor inválido`);
+    if (f.problema === "iva-tarifa" && f.items.every((it) => it.tarifaIva === 0.19)) errores.push(`${f.numero}: ninguna tarifa de IVA distinta del 19 %`);
+    if (f.problema === "girada" && f.rotacion === 0) errores.push(`${f.numero}: debía ir girada`);
+    if (f.problema !== null && f.calidad === "mala") errores.push(`${f.numero}: un caso problemático no puede además ser de mala calidad`);
+    // «Siempre da error»: las reglas del sistema (las mismas del OCR) deben rechazar los tres problemas aritméticos.
+    if (f.problema === "total-no-cuadra" || f.problema === "iva-tarifa" || f.problema === "dv-cliente") {
+      const motivos = validar(aParcial({
+        numero: f.numero, fecha: f.fecha, proveedor: f.proveedor.nombre, nitProveedor: f.proveedor.documento, dvProveedor: f.proveedor.dv,
+        clienteDocumento: f.cliente.documento, clienteDv: f.cliente.dv, clienteNombre: f.cliente.nombre,
+        items: f.items.map(({ descripcion, cantidad, precioUnitario, subtotal }) => ({ descripcion, cantidad, precioUnitario, subtotal })),
+        subtotal: f.subtotal, iva: f.iva, impoconsumo: f.impoconsumo, total: f.total,
+      }));
+      if (motivos.length === 0) errores.push(`${f.numero}: ${f.problema} no es rechazada por la validación (debe serlo siempre)`);
+    }
   }
+  const conProblema = TIPOS_PROBLEMA.map((t) => `${t} ${facturas.filter((f) => f.problema === t).length}`).join(", ");
 
   console.log(`\nFacturas generadas en ${dirFacturas}`);
   console.log(`  imágenes:            ${archivos.length}`);
@@ -138,6 +168,7 @@ async function resumen(facturas: Factura[], ms: number): Promise<void> {
   console.log(`  con impoconsumo 4%:  ${facturas.filter((f) => f.esMovil).length}`);
   console.log(`  diseños:             ${JSON.stringify(conteo(facturas.map((f) => NOMBRES_DISENO[f.diseno])))}`);
   console.log(`  calidad:             ${JSON.stringify(conteo(facturas.map((f) => f.calidad)))}`);
+  console.log(`  requieren revisión:  ${facturas.filter((f) => f.problema).length}  (${conProblema})`);
   console.log(`  tamaño total:        ${(bytes / 1024 / 1024).toFixed(2)} MB   (${(ms / 1000).toFixed(1)} s)`);
   if (errores.length > 0) {
     console.error("\nERRORES:\n - " + errores.join("\n - "));

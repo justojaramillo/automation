@@ -23,7 +23,8 @@ import type { ParcialFactura } from "../src/lib/ocr/tipos";
 import { limpiarLotes } from "./limpiar-lotes";
 
 type V = { archivo: string; numero: string; fecha: string; proveedor: { nombre: string; nit: string; dv: number }; cliente: { documento: string; dv: number; nombre: string };
-  items: { descripcion: string; cantidad: number; precioUnitario: number; subtotal: number }[]; subtotal: number; iva: number; impoconsumo: number; total: number };
+  items: { descripcion: string; cantidad: number; precioUnitario: number; subtotal: number }[]; subtotal: number; iva: number; impoconsumo: number; total: number;
+  problema?: string | null };
 
 let fallos = 0;
 const ok = (titulo: string, cond: boolean, detalle = "") => { console.log(`  ${cond ? "✓" : "✗"} ${titulo}${cond || !detalle ? "" : ` — ${detalle}`}`); if (!cond) fallos++; };
@@ -33,8 +34,10 @@ async function main(): Promise<void> {
   mkdirSync(capturas, { recursive: true });
   const verdad = (JSON.parse(readFileSync(verdadPath, "utf8")) as { facturas: V[] }).facturas;
   // Se eligen facturas con impoconsumo (A) y sin él (B) para recorrer ambos caminos del formulario.
-  const vA = verdad.find((f) => f.impoconsumo > 0)!;
-  const vB = verdad.find((f) => f.impoconsumo === 0 && f.archivo !== vA.archivo)!;
+  // Se evitan las facturas con problema deliberado: sus cifras IMPRESAS no cuadran a propósito.
+  const sanas = verdad.filter((f) => !f.problema);
+  const vA = sanas.find((f) => f.impoconsumo > 0)!;
+  const vB = sanas.find((f) => f.impoconsumo === 0 && f.archivo !== vA.archivo)!;
   const db = firestore();
   const uid = (await autenticacion().getUserByEmail(process.env.CORREO!)).uid;
   const proceso: Proceso = { uid, carpeta: "prueba-revision", estado: "terminado", totalArchivos: 2, inicio: Timestamp.now(), fin: Timestamp.now(), rutaExcel: null };
@@ -89,6 +92,17 @@ async function main(): Promise<void> {
     await pagina.waitForSelector('[data-testid="imagen"]:visible');
     await pagina.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>('[data-testid="imagen"]')].some((i) => i.offsetParent !== null && i.naturalWidth > 0), null, { timeout: 20000 });
     ok("la imagen original se ve (servida desde el Blob privado)", true);
+    // Girar la imagen (para las facturas fotografiadas de lado): el servidor la gira y las dimensiones se intercambian.
+    const dimensiones = () => pagina.evaluate(() => { const i = [...document.querySelectorAll<HTMLImageElement>('[data-testid="imagen"]')].find((x) => x.offsetParent !== null)!; return [i.naturalWidth, i.naturalHeight]; });
+    const [ancho0, alto0] = await dimensiones();
+    await pagina.click('button[aria-label="Girar a la derecha"]:visible');
+    await pagina.waitForFunction(([w, h]) => [...document.querySelectorAll<HTMLImageElement>('[data-testid="imagen"]')].some((i) => i.offsetParent !== null && i.naturalWidth === h && i.naturalHeight === w), [ancho0, alto0], { timeout: 20000 });
+    ok(`«Girar a la derecha» gira la imagen (${ancho0}×${alto0} → ${alto0}×${ancho0})`, true);
+    await pagina.click('button[aria-label="Girar a la izquierda"]:visible');
+    await pagina.waitForFunction(([w, h]) => [...document.querySelectorAll<HTMLImageElement>('[data-testid="imagen"]')].some((i) => i.offsetParent !== null && i.naturalWidth === w && i.naturalHeight === h), [ancho0, alto0], { timeout: 20000 });
+    ok("«Girar a la izquierda» la devuelve a su posición", true);
+    const malo = await pagina.evaluate(async (h) => (await fetch(`/api/facturas/${h}/imagen?rotar=45`)).status, a.hash);
+    ok("el servidor rechaza un giro que no sea 90, 180 o 270 (400)", malo === 400, String(malo));
     await pagina.screenshot({ path: path.join(capturas, "02a-formulario-vacio-ventana.png") }); // solo la ventana (la página completa distorsiona el encabezado fijo)
     ok("la validación avisa que faltan datos (botón desactivado)", await pagina.locator('[data-testid="guardar"]:visible').isDisabled());
     await pagina.fill('[data-testid="f-numero"]:visible', vA.numero);
