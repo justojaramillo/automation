@@ -20,6 +20,6 @@
     <b>Decisión de arquitectura:</b> las imágenes pasan por <b>nuestra API</b>. Así el servidor aplica las reglas del negocio antes de guardar nada, y el navegador nunca recibe permisos sobre el almacén.<br>
     <b>Validaciones del paso 2</b> (cada una evita un ataque): sesión (sin login no se sube nada); lote propio y en estado «subiendo» (no se sube al lote de otro ni a uno cerrado); tamaño (no se llena el almacén con archivos enormes); <b>tipo real por los bytes</b> (un archivo malicioso renombrado a .png se rechaza: el nombre no prueba nada); imagen legible (no se guardan archivos dañados).<br>
     <b>La contrapartida:</b> una invocación de función por imagen y un tope de tamaño (4 MB, porque una petición no puede pasar de 4,5 MB en Vercel). Las facturas pesan ~100 KB (la mayor, 192 KB), así que sobra margen; con archivos de decenas de MB habría que reconsiderarlo.<br>
-    <b>Medido:</b> 1000 imágenes (108 MB) subieron en 78 s sin bloquear el navegador. <b>Detalle práctico:</b> el selector de carpeta se envuelve en un botón visible; un input de archivos sin estilo parece solo texto.
+    <b>Medido:</b> 1000 imágenes (108 MB) subieron en 68 s en producción sin bloquear el navegador. <b>Detalle práctico:</b> el selector de carpeta se envuelve en un botón visible; un input de archivos sin estilo parece solo texto.
   </aside>
 </section>

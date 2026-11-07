@@ -21,6 +21,6 @@
   <aside class="notas">
     <b>«Sin bloquearse»:</b> subir y procesar están <b>desacoplados</b>. Al terminar de subir el lote 1, el motor ya empieza a procesarlo mientras el navegador sube el lote 2.<br>
     <b>El motor</b> es un componente que vive en el layout de la aplicación, así que no se desmonta al cambiar de página. Lanza 3 trabajadores asíncronos; cada uno pide al servidor que procese un lote pequeño; el servidor responde cuántos archivos tomó; cuando ya no quedan, pide el cierre (Excel).<br>
-    <b>Medido:</b> la subida de 1000 imágenes (108 MB) en 10 lotes tomó 89 s y el navegador nunca se bloqueó (retraso máximo de 2 ms). El procesamiento depende del OCR: unos 1,5 s por factura en Vercel Hobby.
+    <b>Medido:</b> la subida de 1000 imágenes (108 MB) en 10 lotes tomó 68 s en producción, pasando cada imagen por la API, y el navegador nunca se bloqueó (retraso máximo de 9 ms). El procesamiento depende del OCR: unos 1,5 s por factura en Vercel Hobby.
   </aside>
 </section>
