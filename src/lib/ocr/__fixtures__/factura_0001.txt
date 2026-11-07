@@ -1,0 +1,19 @@
+. FACTURA ELECTRÓNICA
+Soluciones TI Delafuente Caldera S.A.S.
+NIT 883800871-5 - Responsable de IVA FE-000005
+CLIENTE DATOS DE LA FACTURA
+Inversiones Abrego Lebrón S.A.S. Emisión: 2026-04-22 - 11:08:53
+Documento: 866485714-3 Vence: 2026-05-22
+Crédito 30 días - Transferencia débito bancaria
+Cra 72 4 96-71, Bogotá D.C. - Resolución DIAN 18764968293943 de 2026-02-18 - Prefijo FE
+Cant. Descripción Precio unitario Subtotal
+2 Portátil 14" Core i5 16 GB RAM 512 GB SSD $4.130.100 $8.260.200
+1 Switch de red gestionable 24 puertos Gigabit $712.400 $712.400
+3 Impresora multifuncional láser $1.354.900 $4.064.700
+monocromática con red
+3 UPS interactiva 1000 VA $701.300 $2.103.900
+Subtotal $15.141.200
+IVA (19%) $2.876.828
+Total factura $18.018.028
+CUFE 827a22666c0eeslae7ede333d112eccd3fc7f1462a5b0804562d81372ea8775dae46969eaaf99119531b0e3547377f4f
+Representación gráfica de factura electrónica de venta. Documento sintético con datos ficticios para fines académicos.

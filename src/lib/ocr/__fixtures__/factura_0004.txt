@@ -1,0 +1,28 @@
+SUMINISTROS DE OFICINA VALENCIA PEREA
+S.A.S.
+NIT: 871939399-4
+Cra 48 4 16-93
+Cartagena Tel 606 5491881
+Responsable de IVA
+FACTURA ELECTRONICA DE VENTA
+
+No. FE-000008
+Res. DIAN 18764098823491
+22 de enero de 2026 Pref. FE
+Fecha: 22 de agosto de 2026 15:40:25
+Vence: 22 de agosto de 2026
+Pago: Contado
+Medio: Consignación bancaria
+CLIENTE: Grupo Casas Carrión S.A.
+NIT: 875709035-7
+Resma de papel carta 75 g, 500 hojas
+46 x $19.700 $906.200
+SUBTOTAL $906.200
+IVA 19% $172.178
+TOTAL $1.078.378
+CUFE: 147693bb078265fba0713f6fc52a0b4cda3816127ca742692837059b7c5910498
+70b267691ac9b7913c67797b06ea
+
+Representación gráfica de factura electrónica de venta.
+
+Documento sintético con datos ficticios para fines académicos.

@@ -1,0 +1,19 @@
+Soluciones TI Delafuente Caldera S.A.S. FACTURA ELECTRÓNICA DE VENTA
+NIT: 883.800.871-5 No. FE-000002
+Responsable de IVA
+Cra 72 4 96-71, Bogotá D.C.
+Tel. 605 7846826
+Resolución DIAN No. 18764968293943 del 18 de febrero de 2026, Prefijo FE, rango del FE-000001 al FE-050000.
+Fecha de emisión: 16 de febrero de 2026 13:51:49 Fecha de vencimiento: 18 de marzo de 2026
+Forma de pago: Crédito 30 días Medio de pago: Consignación bancaria
+Adquirente: Agroindustrias Monroy Gallegos S.A. NIT/CC: 894.183.544-3
+A] ome | cm] velrmtaro | ma | vere]
+1 | Mouse óptico inalámbrico ergonómico 2 $116.500 19% e
+2 | Disco de estado sólido SSD 1 TB 4 $369.900 19% $1.479.600
+L: Teclado mecánico inalámbrico español 1 | $281.400 19% $281.400
+Valor antes de IVA $1.994.000
+IVA 19% $378.860
+———L;—]e E 01
+TOTAL A PAGAR $2.372.860
+CUFE: 17064012ef103205f58510670a23f dd56a2 1613d8caf cASdSB470452e6abae2a79220161114613f9b838cdenc2a30a1
+Representación gráfica de factura electrónica de venta. Documento sintético con datos ficticios para fines académicos.

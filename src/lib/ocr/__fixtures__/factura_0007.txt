@@ -1,0 +1,36 @@
+Ferrosuministros Partida Delgadillo S.A.S. FACTURA ELECTRÓNICA DE VENTA
+
+NIT: 829.135.869-0 No. FE-000004
+
+Responsable de IVA
+
+Calle 28 4 17-83, Medellín
+
+Tel. 605 6961564
+
+Resolución DIAN No. 18764668191777 del 27/02/2026. Prefijo FE, rango del FE-000001 al FE-050000.
+
+Fecha de emisión: 05/09/2026 17:36:00 Fecha de vencimiento: 05/09/2026
+
+Forma de pago: Contado Medio de pago: Efectivo
+
+Adquirente: Conchita Vázquez Briones Pedraza Terán NIT/CC: 869.657.877-5
+
+[e] pss [me | valernare [we | valer]
+
+Varilla corrugada 3/8 pulgada x 6 metros $29.300 $3.486.700
+
+Guantes de seguridad de carnaza par $15.500 $403.000
+
+Casco de seguridad con suspensión de 4 puntos 6 $18.800 $112.800
+
+Caja de tornillos autoperforantes x 100 17 $10.100 19% $171.700
+unidades
+
+Valor antes de IVA $4.174.200
+IVA 19% $793.098
+TOTAL A PAGAR $4.967.298
+
+CUFE: 0b578c7dces4cOdb99b7745f12aeBesa37d70fSb53ab2c539dab06b4672f 1bc6ce8d661547875a6b2b539572651d8678
+
+Representación gráfica de factura electrónica de venta. Documento sintético con datos ficticios para fines académicos.

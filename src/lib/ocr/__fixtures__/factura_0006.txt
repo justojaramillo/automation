@@ -1,0 +1,18 @@
+Comunicaciones Móviles Zúñiga Ortega FACTURA
+Ltda ELECTRÓNICA
+NIT 821361310-5 - Responsable de IVA FE-000010
+CLIENTE DATOS DE LA FACTURA
+Corporación Balderas Cabán Ltda. Emisión: 2026-09-14 - 14:10:32
+Documento: 876644757-9 Vence: 2026-09-14
+Contado - Transferencia débito bancaria
+Cra 115 4 48-7, Medellín - Resolución DIAN 18764280109817 de 2026-02-17 - Prefijo FE
+Cant. Descripción Precio unitario Subtotal
+8 Paquete adicional de datos móviles 10 GB $29.200 $233.600
+16 Minutos adicionales a todo destino nacional $17.800 $284.800
+7 Paquete de roaming internacional semanal $117.400 $821.800
+Subtotal $1.340.200
+IVA (19%) $254.638
+Impuesto nacional al consumo (4%) $53.608
+Total factura $1.648.446
+CUFE 441a765ea0c8d26b0ab99dcf0Se72dSa5d7247fee5b9d26a073b767d4f7adafa78467b2042afc914060718d79cafc467
+Representación gráfica de factura electrónica de venta. Documento sintético con datos ficticios para fines académicos.

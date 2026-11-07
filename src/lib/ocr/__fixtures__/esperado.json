@@ -1,0 +1,112 @@
+{
+ "factura_0001": {
+  "numero": "FE-000005",
+  "fecha": "2026-04-22",
+  "nitProveedor": "883800871",
+  "clienteDocumento": "866485714",
+  "subtotal": 15141200,
+  "iva": 2876828,
+  "impoconsumo": 0,
+  "total": 18018028,
+  "nItems": 4
+ },
+ "factura_0002": {
+  "numero": "FE-000009",
+  "fecha": "2026-07-09",
+  "nitProveedor": "821361310",
+  "clienteDocumento": "845990123",
+  "subtotal": 585000,
+  "iva": 111150,
+  "impoconsumo": 23400,
+  "total": 719550,
+  "nItems": 2
+ },
+ "factura_0003": {
+  "numero": "FE-000001",
+  "fecha": "2026-08-19",
+  "nitProveedor": "871939399",
+  "clienteDocumento": "869657877",
+  "subtotal": 834600,
+  "iva": 158574,
+  "impoconsumo": 0,
+  "total": 993174,
+  "nItems": 2
+ },
+ "factura_0004": {
+  "numero": "FE-000008",
+  "fecha": "2026-08-22",
+  "nitProveedor": "871939399",
+  "clienteDocumento": "875709035",
+  "subtotal": 906200,
+  "iva": 172178,
+  "impoconsumo": 0,
+  "total": 1078378,
+  "nItems": 1
+ },
+ "factura_0005": {
+  "numero": "FE-000002",
+  "fecha": "2026-02-16",
+  "nitProveedor": "883800871",
+  "clienteDocumento": "894183544",
+  "subtotal": 1994000,
+  "iva": 378860,
+  "impoconsumo": 0,
+  "total": 2372860,
+  "nItems": 3
+ },
+ "factura_0006": {
+  "numero": "FE-000010",
+  "fecha": "2026-09-14",
+  "nitProveedor": "821361310",
+  "clienteDocumento": "876644757",
+  "subtotal": 1340200,
+  "iva": 254638,
+  "impoconsumo": 53608,
+  "total": 1648446,
+  "nItems": 3
+ },
+ "factura_0007": {
+  "numero": "FE-000004",
+  "fecha": "2026-09-05",
+  "nitProveedor": "829135869",
+  "clienteDocumento": "869657877",
+  "subtotal": 4174200,
+  "iva": 793098,
+  "impoconsumo": 0,
+  "total": 4967298,
+  "nItems": 4
+ },
+ "factura_0008": {
+  "numero": "FE-000007",
+  "fecha": "2026-01-17",
+  "nitProveedor": "871939399",
+  "clienteDocumento": "837623187",
+  "subtotal": 1516300,
+  "iva": 288097,
+  "impoconsumo": 0,
+  "total": 1804397,
+  "nItems": 3
+ },
+ "factura_0009": {
+  "numero": "FE-000006",
+  "fecha": "2026-02-15",
+  "nitProveedor": "829135869",
+  "clienteDocumento": "840524701",
+  "subtotal": 5076800,
+  "iva": 964592,
+  "impoconsumo": 0,
+  "total": 6041392,
+  "nItems": 3
+ },
+ "factura_0010": {
+  "numero": "FE-000003",
+  "fecha": "2026-05-19",
+  "nitProveedor": "883800871",
+  "clienteDocumento": "809875950",
+  "subtotal": 4535400,
+  "iva": 861726,
+  "impoconsumo": 0,
+  "total": 5397126,
+  "nItems": 2
+ }
+}
