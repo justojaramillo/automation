@@ -231,7 +231,7 @@ real. No avances de fase hasta que yo lo diga.</div>
 
 <section class="slide" id="ruta">
   <span class="sobre">El plan</span>
-  <h2>Once pasos, cada uno con su verificación</h2>
+  <h2>Doce pasos, cada uno con su verificación</h2>
   <div class="crece centrado">
     <svg viewBox="0 0 1152 450" width="1152" height="440" role="img" aria-label="Ruta de once fases, de las cuentas a la operación">
       <path class="linea" d="M60 110 H1092 C1130 110 1130 300 1092 300 H60" style="stroke-width:5; stroke:var(--linea)"/>
@@ -245,7 +245,8 @@ real. No avances de fase hasta que yo lo diga.</div>
       <g class="paso"><circle cx="812" cy="300" r="26" class="relleno verde"/><text x="812" y="309" class="t-b t-w" text-anchor="middle">6</text><text x="812" y="352" class="t-s t-b" text-anchor="middle">Lotes y</text><text x="812" y="374" class="t-xs t-m" text-anchor="middle">guardado</text></g>
       <g class="paso"><circle cx="624" cy="300" r="26" class="relleno verde"/><text x="624" y="309" class="t-b t-w" text-anchor="middle">7</text><text x="624" y="352" class="t-s t-b" text-anchor="middle">Excel</text><text x="624" y="374" class="t-xs t-m" text-anchor="middle">en Blob</text></g>
       <g class="paso"><circle cx="436" cy="300" r="26" style="fill:var(--violeta)"/><text x="436" y="309" class="t-b t-w" text-anchor="middle">8</text><text x="436" y="352" class="t-s t-b" text-anchor="middle">Interfaz y</text><text x="436" y="374" class="t-xs t-m" text-anchor="middle">métricas</text></g>
-      <g class="paso"><circle cx="248" cy="300" r="26" style="fill:var(--violeta)"/><text x="248" y="309" class="t-b t-w" text-anchor="middle">D</text><text x="248" y="352" class="t-s t-b" text-anchor="middle">Operación</text><text x="248" y="374" class="t-xs t-m" text-anchor="middle">en Vercel</text></g>
+      <g class="paso"><circle cx="248" cy="300" r="26" style="fill:var(--violeta)"/><text x="248" y="309" class="t-b t-w" text-anchor="middle">9</text><text x="248" y="352" class="t-s t-b" text-anchor="middle">Revisión</text><text x="248" y="374" class="t-xs t-m" text-anchor="middle">manual</text></g>
+      <g class="paso"><circle cx="60" cy="300" r="26" style="fill:var(--violeta)"/><text x="60" y="309" class="t-b t-w" text-anchor="middle">D</text><text x="60" y="352" class="t-s t-b" text-anchor="middle">Operación</text><text x="60" y="374" class="t-xs t-m" text-anchor="middle">en Vercel</text></g>
       <text x="576" y="236" class="t-s t-m" text-anchor="middle">las fases conservan su número histórico: por eso la 3 va después de la 5</text>
     </svg>
   </div>
@@ -691,6 +692,36 @@ CLIENTE: Corporación Montoya Luevano
   </aside>
 </section>
 
+<section class="slide" id="fase-9">
+  <span class="sobre">Fase 9 · Revisión manual</span>
+  <h2>La máquina duda; una persona decide</h2>
+  <div class="fila crece" style="gap:24px">
+    <svg viewBox="0 0 620 420" width="600" height="408" style="flex:none" role="img" aria-label="Boceto del formulario de revisión: imagen a la izquierda, datos y validación a la derecha">
+      <g class="paso inicio"><rect x="0" y="0" width="620" height="420" rx="14" class="papel"/><rect x="0" y="0" width="620" height="34" rx="14" class="caja azul"/><text x="16" y="23" class="t-xs t-b">Revisar factura · factura_0007.jpg</text>
+        <rect x="14" y="48" width="270" height="270" rx="8" class="caja"/><rect x="26" y="62" width="246" height="24" rx="4" class="relleno linea"/><path class="linea fina" d="M26 104 H272 M26 120 H272 M26 136 H272 M26 152 H272 M26 168 H272"/><rect x="26" y="190" width="246" height="64" rx="4" class="relleno linea"/><rect x="170" y="272" width="102" height="30" rx="4" class="relleno linea"/></g>
+      <g class="paso"><rect x="298" y="48" width="308" height="30" rx="6" class="caja"/><text x="308" y="68" class="t-xs">Número · FE-000147</text>
+        <rect x="298" y="86" width="308" height="30" rx="6" class="caja"/><text x="308" y="106" class="t-xs">Proveedor · Redes Móviles Hernández…</text>
+        <rect x="298" y="124" width="150" height="30" rx="6" class="caja"/><text x="308" y="144" class="t-xs">NIT · 856296577</text><rect x="456" y="124" width="150" height="30" rx="6" class="caja"/><text x="466" y="144" class="t-xs">Doc · 828667108</text>
+        <rect x="298" y="162" width="308" height="30" rx="6" class="caja"/><text x="308" y="182" class="t-xs">Ítem 1 · Plan postpago · 1 × 82.100</text>
+        <rect x="298" y="200" width="308" height="30" rx="6" class="caja"/><text x="308" y="220" class="t-xs">Total · 4.266.704   (sugerido: 4.261.704)</text></g>
+      <g class="paso"><rect x="14" y="326" width="592" height="90" rx="10" class="caja rojo"/><use href="#ico-equis" x="26" y="340" width="24" height="24" style="color: var(--rojo)"/><text x="60" y="358" class="t-xs t-b">Subtotal + IVA + impoconsumo = 4.261.704; el total dice 4.266.704</text><text x="60" y="381" class="t-xs">☑ Revisé la imagen: estos datos son los de la factura</text><text x="60" y="402" class="t-xs t-b">→ el botón pasa a «Guardar de todos modos»</text></g>
+    </svg>
+    <div class="col" style="gap:10px">
+      <div class="card azul paso inicio" style="padding:10px 16px"><p class="peq"><b>1 ·</b> Lista de pendientes y formulario con la <b>imagen al lado</b> y lo que la máquina sí leyó, precargado.</p></div>
+      <div class="card paso" style="padding:10px 16px"><p class="peq"><b>2 ·</b> Validación en vivo con <b>las mismas reglas</b> del OCR. Si no cuadra, hay que <b>confirmar</b> que se revisó la imagen.</p></div>
+      <div class="card verde paso" style="padding:10px 16px"><p class="peq"><b>3 ·</b> Una <b>transacción</b>: factura, índice del número, cliente y contadores. Queda quién la corrigió y qué decía la máquina.</p></div>
+      <div class="aviso azul paso" style="font-size:18px"><b>Métricas honestas:</b> «leídas correctamente» sigue midiendo a la <b>máquina</b>; lo corregido se cuenta aparte («revisadas a mano»).</div>
+    </div>
+  </div>
+  <aside class="notas">
+    <b>Cierra el ciclo humano.</b> Hasta esta fase, una factura «en revisión» era un callejón sin salida: esperaba para siempre y sus cifras no entraban nunca en lo procesado. Ahora hay una persona, una pantalla y un registro.<br>
+    <b>Cómo se usa:</b> la pestaña «Revisión» lista las pendientes; cada una abre un formulario con la imagen a la izquierda y los datos a la derecha. Lo que la máquina alcanzó a leer llega precargado, así que la persona solo corrige lo que está mal. Los totales se proponen desde los ítems (IVA 19 %, impoconsumo 4 % si aplica).<br>
+    <b>La validación es la misma</b> función que usa el OCR, ejecutada en el navegador mientras se escribe; el servidor la repite al guardar (no confía en el navegador). Si no cuadra, la persona puede aun así guardar, pero debe confirmar explícitamente que revisó la imagen, y eso queda registrado.<br>
+    <b>La decisión de métricas es la más importante:</b> si lo corregido a mano se sumara a «leídas correctamente», la métrica dejaría de medir la calidad de la máquina y no sabríamos si el OCR mejora o empeora. Por eso se cuenta aparte.<br>
+    <b>Un error real:</b> al pasar de una factura a la siguiente, React reutilizaba el formulario y arrastraba los campos de la anterior (se podían guardar datos de una factura sobre otra). Se arregló con <code>key</code> por factura.
+  </aside>
+</section>
+
 <section class="slide" id="fase-d">
   <span class="sobre">Fase D · Operación en Vercel</span>
   <h2>Lista de comprobación antes de dar por terminado</h2>
@@ -741,7 +772,7 @@ CLIENTE: Corporación Montoya Luevano
     <div class="card azul paso inicio"><span class="peq muted">Subida de 1000 imágenes (108 MB)</span><span class="cifra" style="font-size:44px; font-weight:800; line-height:1.1">68 s</span><span class="peq">10 lotes, por la API · sin bloquearse</span></div>
     <div class="card azul paso"><span class="peq muted">200 facturas, 2 lotes, en producción</span><span class="cifra" style="font-size:44px; font-weight:800; line-height:1.1">≈ 7 min</span><span class="peq">94/100 correctas en cada lote</span></div>
     <div class="card violeta paso"><span class="peq muted">Reprocesar las mismas imágenes</span><span class="cifra" style="font-size:44px; font-weight:800; line-height:1.1">0</span><span class="peq">duplicados (10/10 duplicadas)</span></div>
-    <div class="card paso"><span class="peq muted">Pruebas automáticas del proyecto</span><span class="cifra" style="font-size:44px; font-weight:800; line-height:1.1">69</span><span class="peq">extractor, métricas, documentación y presentaciones</span></div>
+    <div class="card paso"><span class="peq muted">Pruebas automáticas del proyecto</span><span class="cifra" style="font-size:44px; font-weight:800; line-height:1.1">98</span><span class="peq">extractor, métricas, revisión manual, documentación…</span></div>
   </div>
   <div class="aviso paso" style="font-size:19px"><b>Pendiente (no medido):</b> procesar las 1000 completas en producción (estimado: 25 a 35 minutos y ≈ 5000 lecturas / 6000 escrituras de cuota) y probar el botón «Borrar todo» contra la base real.</div>
   <aside class="notas">
@@ -765,6 +796,7 @@ CLIENTE: Corporación Montoya Luevano
     <tr class="paso"><td><b>5·3·6·7</b></td><td><code>npx tsx scripts/probar-http.ts &lt;url&gt; &lt;carpeta&gt;</code></td><td>login, subida, 10/10 aceptadas, Excel de 4 hojas</td></tr>
     <tr class="paso"><td><b>6</b></td><td><code>npx tsx scripts/probar-pipeline.ts …</code></td><td>reproceso: 10/10 duplicadas, sin filas nuevas</td></tr>
     <tr class="paso"><td><b>8</b></td><td><code>npx tsx scripts/probar-ui.ts …</code> (navegador real)</td><td>0 errores de consola</td></tr>
+    <tr class="paso"><td><b>9</b></td><td><code>probar-correccion.ts</code> y <code>probar-revision-ui.ts</code></td><td>transacción y formulario OK; Excel regenerado</td></tr>
     <tr class="paso"><td><b>D</b></td><td>revisar los <i>runtime logs</i> de Vercel</td><td>sin 500, 504 ni 413</td></tr>
   </table>
   <aside class="notas">

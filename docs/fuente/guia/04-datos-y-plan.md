@@ -11,7 +11,7 @@ Al terminar de procesar la carpeta completa:
 - **Reprocesar la misma carpeta no duplica nada** (idempotencia), aunque las imágenes se suban otra vez con otra ruta.
 - Cada lote tiene su Excel y sus métricas; la suma de la columna Total del Excel coincide con la base de datos.
 
-**Qué exactitud esperar.** Medida en el repositorio de referencia **sobre las 1000 facturas del curso** (solo extracción, sin base de datos): **915 aceptadas automáticamente (92 %) y 85 a revisión**; de las 915 aceptadas, **912 totalmente correctas y 3 con un error que la validación no detectó**. Con otros conjuntos de facturas la cifra varió entre 82 % y 98 %, y una muestra de 100 del mismo conjunto dio 85 %: una muestra pequeña engaña. El 100 % no existe con OCR sobre imágenes degradadas. Los motivos de revisión más comunes: documento del cliente no leído, proveedor no leído e ítems que no suman el subtotal. Una factura "aceptada" solo significa que pasó todas las validaciones; un error que cuadre aritméticamente (por ejemplo, un dígito mal leído en el número de factura) puede pasar. **Mide con tu conjunto; no supongas.**
+**Qué exactitud esperar.** Medida en el repositorio de referencia **sobre las 1000 facturas del curso** (solo extracción, sin base de datos): **915 aceptadas automáticamente (92 %) y 85 a revisión**; de las 915 aceptadas, **912 totalmente correctas y 3 con un error que la validación no detectó**. Con otros conjuntos de facturas la cifra varió entre 82 % y 98 %, y una muestra de 100 del mismo conjunto dio 85 %: una muestra pequeña engaña. El 100 % no existe con OCR sobre imágenes degradadas, y por eso existe la **revisión manual** (Fase 9). Los motivos de revisión más comunes: documento del cliente no leído, proveedor no leído e ítems que no suman el subtotal. Una factura "aceptada" solo significa que pasó todas las validaciones; un error que cuadre aritméticamente (por ejemplo, un dígito mal leído en el número de factura) puede pasar. **Mide con tu conjunto; no supongas.**
 
 ### Orden recomendado
 
@@ -29,4 +29,5 @@ Las fases conservan el número histórico (por eso `fase-3` va después de `fase
 | 8 | 6 | Lotes, cola y guardado idempotente | procesar dos veces no duplica nada |
 | 9 | 7 | Excel en Blob | la suma del Excel = la suma en Firestore |
 | 10 | 8 | Interfaz, motor, métricas y borrado | recorrido completo con navegador real |
-| 11 | D | Operación en Vercel | logs sin errores, nota de cuota |
+| 11 | 9 | Revisión manual de las facturas dudosas | `probar-correccion` y `probar-revision-ui` |
+| 12 | D | Operación en Vercel | logs sin errores, nota de cuota |

@@ -914,7 +914,7 @@
         <path class="flecha verde" d="M760 218 H782"/><rect x="784" y="180" width="170" height="76" rx="12" class="caja verde"/><text x="869" y="214" class="t-s t-b" text-anchor="middle">Guardar</text><text x="869" y="238" class="t-s t-b" text-anchor="middle">y Excel</text>
         <path class="flecha verde" d="M956 218 H978"/><rect x="980" y="180" width="172" height="76" rx="12" class="caja verde"/><text x="1066" y="214" class="t-s t-b" text-anchor="middle">Métricas</text><text x="1066" y="238" class="t-s t-b" text-anchor="middle">por lote</text></g>
       <g class="paso"><path class="flecha ambar" d="M673 258 V300"/><text x="690" y="286" class="t-xs t-b" style="fill:var(--ambar)">si no cuadra</text>
-        <rect x="548" y="302" width="250" height="84" rx="12" class="caja violeta"/><use href="#ico-persona" x="560" y="322" width="40" height="40" style="color: var(--violeta)"/><text x="612" y="338" class="t-b">Revisión</text><text x="612" y="364" class="t-s">humana</text>
+        <rect x="548" y="302" width="250" height="84" rx="12" class="caja violeta"/><use href="#ico-persona" x="560" y="322" width="40" height="40" style="color: var(--violeta)"/><text x="612" y="338" class="t-b">Revisión</text><text x="612" y="364" class="t-s">humana (formulario)</text>
         <text x="0" y="352" class="t-s t-m">Las dudosas no se pierden:</text><text x="0" y="378" class="t-s t-m">quedan «en revisión».</text></g>
     </svg>
   </div>
@@ -933,7 +933,7 @@
     <tr class="paso inicio"><td><b>Disparador</b></td><td>el usuario elige la carpeta y pulsa «Subir y procesar»</td><td>Fases 3 y 8</td></tr>
     <tr class="paso inicio"><td><b>Entrada</b></td><td>las imágenes de las facturas, en un almacén privado (Vercel Blob)</td><td>Fase 3</td></tr>
     <tr class="paso"><td><b>Reglas</b></td><td>OCR + extractor + validador: IVA 19 %, impoconsumo 4 %, sumas y dígito de verificación del NIT</td><td>Fases 4 y 5</td></tr>
-    <tr class="paso"><td><b>Excepción</b></td><td>estado «revisión»: la factura no se pierde, espera a una persona</td><td>Fase 6</td></tr>
+    <tr class="paso"><td><b>Excepción</b></td><td>estado «revisión»: no se pierde; una persona la corrige en un formulario con la imagen al lado</td><td>Fases 6 y 9</td></tr>
     <tr class="paso"><td><b>Registro</b></td><td>Firestore: facturas, clientes y métricas de cada lote; sin duplicados</td><td>Fases 2, 6 y 8</td></tr>
     <tr class="paso"><td><b>Salida</b></td><td>un Excel por lote y el panel de métricas</td><td>Fases 7 y 8</td></tr>
     <tr class="paso"><td><b>Seguridad</b></td><td>inicio de sesión con Firebase Authentication; cada quien ve lo suyo</td><td>Fase A</td></tr>

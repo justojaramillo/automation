@@ -35,12 +35,16 @@ Consecuencia de seguridad: al no existir un explorador de carpetas del servidor 
 src/app/                       páginas y Route Handlers (la API)
   page.tsx                     «Procesar facturas» (subida por lotes)
   metricas/page.tsx            panel de métricas
+  revision/page.tsx            lista de facturas pendientes de revisión
+  revision/[hash]/page.tsx     formulario de revisión manual (imagen + datos)
   procesos/[id]/page.tsx       detalle de un lote (avance, Excel, tabla de facturas)
   login/page.tsx               inicio de sesión
   api/sesion/route.ts          login/logout: ID token → cookie de sesión
   api/procesos/route.ts        crea un lote / lista los del usuario
   api/procesos/[id]/…          imagenes (sube y valida), iniciar, lote, finalizar, excel, facturas, estado
   api/metricas/route.ts        métricas de todos los lotes (1 lectura por lote)
+  api/facturas/route.ts        facturas pendientes de revisión humana
+  api/facturas/[hash]/route.ts detalle y guardado de la revisión manual (PUT)
   api/facturas/[hash]/imagen/  sirve la imagen original desde el Blob privado
   api/datos/borrar/route.ts    «Borrar todo» (confirmación escrita)
   api/salud/route.ts           diagnóstico del despliegue (exige sesión)

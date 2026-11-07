@@ -62,7 +62,7 @@ Pega esto (cambiando el número de fase) en tu agente:
                                 todas las rutas exigen sesión de Firebase Auth)
 ```
 
-Funciones finales: inicio de sesión (correo y contraseña); subir una carpeta de hasta 1000 facturas que se divide en **lotes**; procesamiento automático en segundo plano con avance en vivo (incluye antes de IVA, IVA, impoconsumo y total acumulados); un **Excel por lote**; **panel de métricas** (facturas leídas correctamente vs mal leídas, por lote o en total, y totales por razón social); tabla de resultados con la imagen original de cada factura; y un botón para borrar todos los datos de prueba.
+Funciones finales: inicio de sesión (correo y contraseña); subir una carpeta de hasta 1000 facturas que se divide en **lotes**; procesamiento automático en segundo plano con avance en vivo (incluye antes de IVA, IVA, impoconsumo y total acumulados); un **Excel por lote**; **panel de métricas** (facturas leídas correctamente vs mal leídas, por lote o en total, y totales por razón social); tabla de resultados con la imagen original de cada factura; un **formulario de revisión manual** para ingresar o corregir a mano las facturas que la máquina no pudo aceptar (cierra el ciclo de validación humana); y un botón para borrar todos los datos de prueba.
 
 ## 2. Reglas de trabajo (para la IA y para ti)
 
@@ -130,12 +130,16 @@ Consecuencia de seguridad: al no existir un explorador de carpetas del servidor 
 src/app/                       páginas y Route Handlers (la API)
   page.tsx                     «Procesar facturas» (subida por lotes)
   metricas/page.tsx            panel de métricas
+  revision/page.tsx            lista de facturas pendientes de revisión
+  revision/[hash]/page.tsx     formulario de revisión manual (imagen + datos)
   procesos/[id]/page.tsx       detalle de un lote (avance, Excel, tabla de facturas)
   login/page.tsx               inicio de sesión
   api/sesion/route.ts          login/logout: ID token → cookie de sesión
   api/procesos/route.ts        crea un lote / lista los del usuario
   api/procesos/[id]/…          imagenes (sube y valida), iniciar, lote, finalizar, excel, facturas, estado
   api/metricas/route.ts        métricas de todos los lotes (1 lectura por lote)
+  api/facturas/route.ts        facturas pendientes de revisión humana
+  api/facturas/[hash]/route.ts detalle y guardado de la revisión manual (PUT)
   api/facturas/[hash]/imagen/  sirve la imagen original desde el Blob privado
   api/datos/borrar/route.ts    «Borrar todo» (confirmación escrita)
   api/salud/route.ts           diagnóstico del despliegue (exige sesión)
@@ -167,7 +171,7 @@ Al terminar de procesar la carpeta completa:
 - **Reprocesar la misma carpeta no duplica nada** (idempotencia), aunque las imágenes se suban otra vez con otra ruta.
 - Cada lote tiene su Excel y sus métricas; la suma de la columna Total del Excel coincide con la base de datos.
 
-**Qué exactitud esperar.** Medida en el repositorio de referencia **sobre las 1000 facturas del curso** (solo extracción, sin base de datos): **915 aceptadas automáticamente (92 %) y 85 a revisión**; de las 915 aceptadas, **912 totalmente correctas y 3 con un error que la validación no detectó**. Con otros conjuntos de facturas la cifra varió entre 82 % y 98 %, y una muestra de 100 del mismo conjunto dio 85 %: una muestra pequeña engaña. El 100 % no existe con OCR sobre imágenes degradadas. Los motivos de revisión más comunes: documento del cliente no leído, proveedor no leído e ítems que no suman el subtotal. Una factura "aceptada" solo significa que pasó todas las validaciones; un error que cuadre aritméticamente (por ejemplo, un dígito mal leído en el número de factura) puede pasar. **Mide con tu conjunto; no supongas.**
+**Qué exactitud esperar.** Medida en el repositorio de referencia **sobre las 1000 facturas del curso** (solo extracción, sin base de datos): **915 aceptadas automáticamente (92 %) y 85 a revisión**; de las 915 aceptadas, **912 totalmente correctas y 3 con un error que la validación no detectó**. Con otros conjuntos de facturas la cifra varió entre 82 % y 98 %, y una muestra de 100 del mismo conjunto dio 85 %: una muestra pequeña engaña. El 100 % no existe con OCR sobre imágenes degradadas, y por eso existe la **revisión manual** (Fase 9). Los motivos de revisión más comunes: documento del cliente no leído, proveedor no leído e ítems que no suman el subtotal. Una factura "aceptada" solo significa que pasó todas las validaciones; un error que cuadre aritméticamente (por ejemplo, un dígito mal leído en el número de factura) puede pasar. **Mide con tu conjunto; no supongas.**
 
 ### Orden recomendado
 
@@ -185,7 +189,8 @@ Las fases conservan el número histórico (por eso `fase-3` va después de `fase
 | 8 | 6 | Lotes, cola y guardado idempotente | procesar dos veces no duplica nada |
 | 9 | 7 | Excel en Blob | la suma del Excel = la suma en Firestore |
 | 10 | 8 | Interfaz, motor, métricas y borrado | recorrido completo con navegador real |
-| 11 | D | Operación en Vercel | logs sin errores, nota de cuota |
+| 11 | 9 | Revisión manual de las facturas dudosas | `probar-correccion` y `probar-revision-ui` |
+| 12 | D | Operación en Vercel | logs sin errores, nota de cuota |
 
 ### Fase 0 — Cuentas y conexiones (PREGUNTAR, no asumir)
 
@@ -262,7 +267,7 @@ Las fases conservan el número histórico (por eso `fase-3` va después de `fase
 | Colección | ID del documento | Campos principales |
 |---|---|---|
 | `clientes` | el documento (NIT/CC sin puntos ni guion ni DV) → no puede haber dos | `documento`, `dv`, `nombre`, `creadoEn`, `primerProcesoId` |
-| `facturas` | **SHA-256 de la imagen** (existe siempre, aunque el OCR falle) → el mismo archivo nunca se guarda dos veces | `numero`, `fecha` (emisión, `yyyy-mm-dd`), `proveedor`, `nitProveedor`, `clienteDocumento` (`null` si no pasó el DV), `clienteNombre`, `subtotal`, `iva`, `impoconsumo`, `total` (enteros COP), `estado` (`aceptada`\|`revision`), `motivos[]`, `archivo`, `blobPathname`, `confianzaOcr`, `procesoId`, `uid`, `creadoEn`, `items[]` (embebidos: `descripcion`, `cantidad`, `precioUnitario`, `subtotal`) |
+| `facturas` | **SHA-256 de la imagen** (existe siempre, aunque el OCR falle) → el mismo archivo nunca se guarda dos veces | `numero`, `fecha` (emisión, `yyyy-mm-dd`), `proveedor`, `nitProveedor`, `clienteDocumento` (`null` si no pasó el DV), `clienteNombre`, `subtotal`, `iva`, `impoconsumo`, `total` (enteros COP), `estado` (`aceptada`\|`revision`), `motivos[]`, `archivo`, `blobPathname`, `confianzaOcr`, `procesoId`, `uid`, `creadoEn`, `items[]` (embebidos: `descripcion`, `cantidad`, `precioUnitario`, `subtotal`); y, desde la Fase 9, `dvProveedor`, `clienteDv`, `clienteDocumentoLeido`, `corregidaManualmente`, `corregidaPor`, `motivosOriginales`, `validacionesIgnoradas` |
 | `indices_numero` | el número de factura (`FE-000123`) | `{ hashArchivo }` — hace único el número; se crea en la misma transacción que la factura |
 | `procesos` (un **lote**) | id automático | `uid`, `carpeta`, `estado` (`subiendo`\|`ejecutando`\|`terminado`), `totalArchivos`, `inicio`, `fin`, `rutaExcel`, `finalizandoDesde`, `metricas` (Fase 8) |
 | `procesos/{id}/archivos` (la **cola de trabajo**) | el nombre del blob | `blobPathname`, `nombre`, `estado`, `resultado` (`aceptada`\|`revision`\|`duplicada`\|`error`), `clienteNuevo`, `clienteExistente`, `hashArchivo`, `intentos`, `error`, **`disponibleDesde`** |
@@ -478,7 +483,7 @@ Las fases conservan el número histórico (por eso `fase-3` va después de `fase
 
 **3. El Motor (`Motor.tsx`).** Un componente del layout que lanza **3 trabajadores** asíncronos. Cada uno repite: elegir un lote en ejecución que no esté "agotado" → `POST …/lote` → si respondió `reclamados: 0`, marcar el lote como agotado (se vuelve a mirar a los 30 s por si caducó el arrendamiento de otra función) y pedir `finalizar` (que se reintenta cada 5 s mientras queden archivos en proceso en otra llamada) → al responder `listo`, quitar el lote y emitir `lote-terminado`. Al montarse descubre con `GET /api/procesos?estado=ejecutando` los lotes que quedaron a medias (por ejemplo, se cerró la pestaña): **todo es idempotente, así que retoma donde quedó.** Ante un error espera cada vez más (hasta 30 s) y reintenta; un 404 significa que el lote se borró; un 401, que la sesión caducó.
 
-**4. Métricas por lote (contadores dentro de la transacción).** Cada lote lleva en `procesos/{id}.metricas`: `aceptadas` y `revision` (cada una con `n`, `subtotal`, `iva`, `impoconsumo`, `total`), `errores`, `duplicadas`, `clientesNuevos` y `proveedores` (un mapa por **NIT del proveedor** con `nombre`, `n` e importes; **solo facturas aceptadas**, porque en las de revisión el NIT puede estar mal leído).
+**4. Métricas por lote (contadores dentro de la transacción).** Cada lote lleva en `procesos/{id}.metricas`: `aceptadas` y `revision` (cada una con `n`, `subtotal`, `iva`, `impoconsumo`, `total`), `manuales` (facturas ingresadas o corregidas a mano, Fase 9), `errores`, `duplicadas`, `clientesNuevos` y `proveedores` (un mapa por **NIT del proveedor** con `nombre`, `n` e importes; **solo facturas aceptadas**, porque en las de revisión el NIT puede estar mal leído).
 - Se actualizan con `FieldValue.increment` **dentro de la misma transacción que guarda la factura** (`aplicarMetricas`, que usa `FieldPath` porque el NIT es una clave numérica). Así los contadores siempre cuadran con los datos y no hay que recorrer miles de facturas para mostrar cifras: **abrir el panel cuesta 1 lectura por lote**. Son escrituras ciegas (no leen el documento), así que no provocan reintentos por contención entre lotes concurrentes.
 - `cambiosDe(evento)` (puro, con pruebas) describe qué se incrementa; `sumarMetricas`, `calcularTasas` y `proveedoresOrdenados` (puros) suman lotes y calculan porcentajes; `metricasDesdeEventos` y `scripts/recalcular-metricas.ts <idLote>` reconstruyen las métricas de un lote (por ejemplo, uno anterior a los contadores).
 - **Definiciones** (escríbelas en la interfaz): *Leída correctamente* = pasó **todas** las validaciones (no se compara contra una respuesta conocida: un error que cuadre aritméticamente podría pasar). *Mal leída* = quedó en revisión o dio error. Los porcentajes son sobre las facturas **distintas** procesadas (aceptadas + revisión + errores); las **duplicadas** no cuentan porque ya estaban.
@@ -501,6 +506,41 @@ Las fases conservan el número histórico (por eso `fase-3` va después de `fase
 **Errores típicos.** `Date.now()` o `setState` síncrono en un efecto (reglas de lint de React 19: llama a funciones impuras dentro de callbacks y carga datos con `setTimeout(…, 0)` o `async`); durante una navegación coexisten dos `<main>` (en Playwright usa un selector con texto); sondeos demasiado frecuentes que gastan la cuota; dos Motores si montas el componente dos veces; mezclar lotes de dos corridas del generador (los números `FE-000001…` se repiten y esas facturas quedan en revisión con «ya existe en otra factura»: es el comportamiento diseñado).
 
 **Pídele a tu IA.** "Explícame por qué los contadores se actualizan dentro de la transacción y no después, y qué pasaría con las cifras si la función se cayera justo entre las dos cosas."
+
+---
+
+### Fase 9 — Revisión manual de las facturas dudosas (cierra el ciclo humano)
+
+**Objetivo.** Que una persona pueda **ingresar o corregir a mano** las facturas que la máquina no pudo aceptar (estado `revision`, o error del OCR), viendo la imagen original. Sin esto, «a revisión» sería un callejón sin salida: la factura quedaría esperando para siempre y sus cifras no entrarían nunca en lo procesado.
+
+**Qué construyes.** Pantallas: `src/app/revision/page.tsx` (lista de pendientes, con `src/componentes/ListaRevision.tsx`) y `src/app/revision/[hash]/page.tsx` (formulario, con `src/componentes/FormularioFactura.tsx`); una pestaña «Revisión» en el menú. Servidor: `src/app/api/facturas/route.ts` (lista), `src/app/api/facturas/[hash]/route.ts` (detalle y guardado), `src/lib/procesamiento/corregir.ts` (la transacción), `src/lib/procesamiento/correccion.ts` (funciones puras compartidas con el navegador), `src/lib/procesamiento/correccion-esquema.ts` (esquema de entrada) y `src/app/api/procesos/[id]/regenerar-excel/route.ts`.
+
+**Cómo funciona.**
+1. **Lista** (`GET /api/facturas`): las facturas del usuario con `estado == "revision"`. Solo filtros de igualdad (sin índice compuesto); cuesta una lectura por factura listada y se limita a 200.
+2. **Formulario**: la imagen original a la izquierda (con zoom) y, a la derecha, número, fecha, proveedor (NIT y dígito de verificación), cliente, **ítems** (descripción, cantidad y precio; el subtotal de cada uno se calcula) y totales. Llega **precargado con lo que la máquina alcanzó a leer** (por eso, desde esta fase, las facturas guardan también `dvProveedor`, `clienteDv` y `clienteDocumentoLeido`). Los totales se **proponen** desde los ítems (IVA 19 %, impoconsumo 4 % solo si la factura lo trae) y la persona puede corregirlos; «Recalcular» vuelve a la propuesta.
+3. **Validación en vivo con las mismas reglas del servidor**: el navegador ejecuta `validar(aParcial(datos))` (la misma función del OCR, Fase 4) y el esquema de formato. Si todo cuadra, se guarda sin más. Si algo no cuadra, aparece la lista de motivos y la persona debe marcar «revisé la imagen y estos datos son los de la factura» → el botón pasa a **«Guardar de todos modos»**. La persona es la autoridad (la factura puede traer una incoherencia real), pero queda constancia.
+4. **Guardado** (`PUT /api/facturas/[hash]`): el servidor **no confía en el navegador**: valida el cuerpo con zod y repite `validar`. Responde 400 (formato), 422 (validaciones sin confirmar), 404 (no existe o es de otro usuario) o 409 (la aceptó la máquina; o su número ya existe en otra factura).
+5. **La transacción** (`corregirFactura`, lecturas antes de escrituras): la factura pasa a `aceptada` con los datos de la persona y `corregidaManualmente: true`, `corregidaPor` (correo), `corregidaEn`, `motivosOriginales` (qué decía la máquina) y `validacionesIgnoradas`; se crea el **índice del número** (y se libera el anterior si cambió el número); se crea el **cliente** solo si no existe y su documento pasa el dígito de verificación; y se actualizan los **contadores del lote**. Si la persona vuelve a editar, se aplican solo las **diferencias** de importes.
+6. Al guardar, el formulario salta a la **siguiente pendiente**.
+
+**Métricas honestas.** Lo que corrige una persona **no se mezcla con «leídas correctamente»**: ese porcentaje mide a la máquina y no cambia. Las correcciones se cuentan aparte en `metricas.manuales` (n e importes). El panel muestra «de las N mal leídas, X ya se revisaron a mano y Y esperan a una persona» (pendientes = mal leídas − manuales), y **lo procesado** (antes de IVA, IVA, impoconsumo, total y el desglose por razón social) suma las aceptadas por la máquina **más** las revisadas a mano; lo que sigue en revisión no se incluye hasta que alguien lo revise.
+
+**Excel.** Es una foto del momento en que terminó el lote. Después de corregir facturas, `POST /api/procesos/[id]/regenerar-excel` (botón «Regenerar el Excel con las correcciones a mano» en el detalle del lote) lo genera de nuevo desde la base de datos.
+
+**Por qué.** Una automatización honesta tiene una salida para sus excepciones: la máquina no pretende acertar el 100 %, se lo pasa a una persona y deja registro de quién decidió qué. Hacerlo en una transacción mantiene factura, índices, cliente y contadores siempre consistentes.
+
+**Verificación.**
+- `npx tsx scripts/probar-correccion.ts <verdad.json>` (Firestore real; limpia lo que crea): validación que rechaza (422) sin escribir nada; guardado con todos sus efectos (factura, índice, cliente, contadores); reedición que aplica solo la diferencia; número repetido (409); factura ya aceptada por la máquina (409); factura ajena o inexistente (404); cambio de número que libera el índice anterior.
+- `CORREO=… CLAVE=… npx tsx scripts/probar-revision-ui.ts <url> <imágenes> <verdad.json> <capturas>` (navegador real): lista, formulario, imagen visible, validación en vivo (el total equivocado exige confirmar), guardado y salto a la siguiente, métricas, detalle del lote y Excel regenerado con las facturas corregidas; 0 errores de consola.
+
+**Errores típicos.**
+- **React reutiliza el componente al pasar de una factura a la siguiente** y conserva los campos, la confirmación y el mensaje de la anterior: se podrían guardar datos de una factura sobre otra. Solución: `key={hash}` para que cada factura sea un formulario nuevo.
+- **Next 16 con `cacheComponents` deja montada y oculta la pantalla anterior** al navegar: en las pruebas de interfaz, los selectores deben mirar solo lo visible (`:visible`).
+- **Vitest no entiende el alias `@/`** si no lo declaras: `vitest.config.ts` con el mismo alias que `tsconfig.json`.
+- Una frase maquetada con `flex` se parte en cajas con huecos: usa párrafo corrido.
+- Una factura con error del OCR no trae ítems: el formulario debe mostrar siempre al menos una fila.
+
+**Pídele a tu IA.** "Explícame por qué las correcciones manuales no se suman a «leídas correctamente», y qué pasaría con la confianza en la métrica si se sumaran."
 
 ---
 
@@ -595,6 +635,8 @@ Cifras de referencia; **verifícalas en la documentación vigente de cada servic
 | `npx tsx scripts/probar-pipeline.ts <imágenes> <verdad.json>` | prueba de servidor: Blob + cola + lotes + Excel + idempotencia (limpia lo que crea) |
 | `CORREO=… CLAVE=… npx tsx scripts/probar-http.ts <url> <imágenes>` | recorrido completo **por HTTP** contra local o producción (limpia lo que crea) |
 | `CORREO=… CLAVE=… npx tsx scripts/probar-ui.ts <url> <imágenes> <porLote> <capturas>` | prueba de la interfaz con navegador real (`--sin-procesar` para medir solo la subida) |
+| `npx tsx scripts/probar-correccion.ts <verdad.json>` | prueba de integración (Firestore real) de la revisión manual: transacción, índices, cliente y contadores (limpia lo que crea) |
+| `CORREO=… CLAVE=… npx tsx scripts/probar-revision-ui.ts <url> <imágenes> <verdad.json> <capturas>` | prueba de la revisión manual con navegador real y datos reales (limpia lo que crea) |
 | `npx tsx scripts/limpiar-lotes.ts <idLote> …` | borra **solo** los lotes indicados |
 | `npx tsx scripts/recalcular-metricas.ts <idLote>` | reconstruye las métricas de un lote |
 

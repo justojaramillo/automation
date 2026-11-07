@@ -33,6 +33,8 @@ Cifras de referencia; **verifícalas en la documentación vigente de cada servic
 | `npx tsx scripts/probar-pipeline.ts <imágenes> <verdad.json>` | prueba de servidor: Blob + cola + lotes + Excel + idempotencia (limpia lo que crea) |
 | `CORREO=… CLAVE=… npx tsx scripts/probar-http.ts <url> <imágenes>` | recorrido completo **por HTTP** contra local o producción (limpia lo que crea) |
 | `CORREO=… CLAVE=… npx tsx scripts/probar-ui.ts <url> <imágenes> <porLote> <capturas>` | prueba de la interfaz con navegador real (`--sin-procesar` para medir solo la subida) |
+| `npx tsx scripts/probar-correccion.ts <verdad.json>` | prueba de integración (Firestore real) de la revisión manual: transacción, índices, cliente y contadores (limpia lo que crea) |
+| `CORREO=… CLAVE=… npx tsx scripts/probar-revision-ui.ts <url> <imágenes> <verdad.json> <capturas>` | prueba de la revisión manual con navegador real y datos reales (limpia lo que crea) |
 | `npx tsx scripts/limpiar-lotes.ts <idLote> …` | borra **solo** los lotes indicados |
 | `npx tsx scripts/recalcular-metricas.ts <idLote>` | reconstruye las métricas de un lote |
 
