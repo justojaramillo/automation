@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Procesador de facturas
 
-## Getting Started
+Aplicación web (Next.js 16, desplegada en Vercel) que automatiza el procesamiento de facturas electrónicas colombianas: eliges una carpeta de imágenes, la app las sube a **Vercel Blob**, las lee con **OCR** (tesseract.js), extrae y valida los campos (IVA, impoconsumo, dígito de verificación del NIT…), los guarda en **Firestore**, calcula **métricas** por lote y genera un **Excel** por lote. El acceso se controla con **Firebase Authentication**.
 
-First, run the development server:
+Proyecto de la clase *Tendencias en desarrollo de software* (tema: **automatización**).
+
+## Para construirlo (estudiantes y su IA)
+
+La guía paso a paso está en **[`AGENTS.md`](AGENTS.md)** (para cualquier agente de IA) y en **[`CLAUDE.md`](CLAUDE.md)** (para Claude Code); el contenido es el mismo. Empieza por la sección 1, «Cómo usar esta guía con tu IA». Las fases, en orden: 0 cuentas → 1 proyecto base → 2 modelo de datos → A autenticación → 4 extractor → 5 OCR en Vercel → 3 subida a Blob → 6 lotes y guardado → 7 Excel → 8 interfaz y métricas → D operación.
+
+## Ejecutar en local
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env        # y rellénalo (la guía explica cada variable; nunca subas .env a Git)
+npx tsx scripts/probar-conexion.ts   # debe imprimir Firestore OK, Auth OK, Blob OK
+npm run dev                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Comprobaciones antes de cada commit: `npm run lint`, `npx tsc --noEmit`, `npm test`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Documentación
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`AGENTS.md` y `CLAUDE.md` se **generan** con `npm run docs` a partir de `docs/fuente/` (no se editan a mano en este repositorio). `npm test` falla si no coinciden con su fuente o si mencionan un archivo, variable o comando que no existe.

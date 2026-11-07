@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "generar:facturas": "tsx scripts/generar-facturas.ts"
+    "generar:facturas": "tsx scripts/generar-facturas.ts",
+    "docs": "tsx scripts/generar-docs.ts",
+    "presentaciones": "tsx scripts/generar-presentaciones.ts"
   },
   "dependencies": {
     "@tesseract.js-data/spa": "1.0.0",

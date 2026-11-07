@@ -1,331 +1,634 @@
 # CLAUDE.md — Procesador de facturas (Next.js + OCR + Vercel Blob + Firebase + Excel) desplegado en Vercel
 
-Eres la IA que ayuda a un estudiante a construir **desde cero** este proyecto, por fases.
-Contexto: clase "Tendencias en desarrollo de software", tema **automatización**. El estudiante sabe TypeScript y Python.
-El objetivo es que **entienda lo que construye**: explica brevemente el porqué de cada paso y no avances de fase sin que la verificación pase.
+Eres Claude Code ayudando a un estudiante a construir **desde cero** este proyecto, por fases. Contexto: clase "Tendencias en desarrollo de software", tema **automatización**. El estudiante sabe TypeScript y Python. **El objetivo es que entienda lo que construye**: explica brevemente el porqué de cada paso y no avances de fase sin que la verificación pase.
 
-> **Cambio de arquitectura respecto a la versión anterior:** el proyecto ya no corre en el computador del usuario con XAMPP/MySQL y rutas del disco. Ahora se **despliega en Vercel**: las facturas se suben a **Vercel Blob**, los datos viven en **Firestore (Firebase)**, los usuarios se autentican con **Firebase Authentication (correo y contraseña)** y el Excel se guarda en Blob. Esto cambia cómo se selecciona la carpeta, cómo corre el trabajo largo y dónde queda el Excel (ver sección 1 y las fases).
+Todo lo que sigue a esta cabecera (a partir de la sección 1) es **la misma guía paso a paso que contiene `AGENTS.md`** (la leen otros agentes de IA). Esta cabecera añade solo lo específico de Claude Code y el estado del repositorio de referencia.
 
-## 0. Estado actual y punto de reanudación (léelo primero en una sesión nueva)
+## Cómo trabajar con Claude Code en este proyecto
 
-Última actualización: 2026-11-06. Repositorio: https://github.com/justojaramillo/automation (rama `main`).
+- **Al empezar una fase**: usa el modo de plan (o resume tu plan en máximo 8 líneas), lista los archivos que vas a tocar y el comando que demuestra que terminó. Espera el visto bueno.
+- **Lee y entiende cada petición de permiso** antes de aprobarla. No apruebes en bloque comandos que impriman o lean `.env`, que borren datos, que hagan `git push --force` o que creen recursos en la nube.
+- **Si una acción es denegada** (por el estudiante o por el sistema de permisos), no la rodees por otro camino: busca una alternativa más segura y, si de verdad hace falta esa acción, explica por qué y deja que el estudiante decida. Un caso real: una prueba automática terminaba pulsando «Borrar todo» contra la base real y el sistema la bloqueó con razón; la solución fue limpiar solo lo que la prueba crea.
+- **Entre fases**, limpia la conversación (`/clear`): esta guía y el repositorio ya contienen el contexto; no hace falta arrastrar historial.
+- **No lances subagentes ni tareas largas en segundo plano sin que el estudiante lo pida**, y no dejes procesos corriendo al terminar.
+- **Documentación primero**: para Next.js 16 lee `node_modules/next/dist/docs/` antes de escribir código (ver el detector de código desactualizado, sección 2).
+- **Cómo mirar `.env` en una sesión nueva**: nunca lo leas ni lo imprimas. Comprueba que está completo con `npx tsx scripts/probar-conexion.ts`; si necesitas ver qué nombres hay, `grep -v '^#' .env | cut -d= -f1` (solo la parte anterior al primer `=`).
 
-**Hecho y verificado**
-- Fase G (generador): `npm run generar:facturas -- --cantidad 10` produce 10 facturas colombianas (IVA 19 %, impoconsumo 4 % en móvil, 4 diseños, 3 calidades) y `salida/verdad.json`. Se revisaron a ojo 4 imágenes.
-- `src/lib/ocr/nit.ts` (dígito de verificación) con pruebas: `npm test` pasa (6 de 6).
-- Fase 0: `.env` con Firebase (web y Admin) y Vercel Blob; `npx tsx scripts/probar-conexion.ts` imprime Firestore OK, Auth OK y Blob OK. Las reglas de Firestore están cerradas (peticiones anónimas devuelven 403).
-- `src/lib/firebase/admin.ts` (Firestore y Auth, solo servidor) y `.env.example`.
-- `CLAUDE.md` migrado a Firebase (modelo de colecciones en la Fase 2, autenticación en la Fase A).
+<!-- PROFESOR:INICIO — Esta sección es el estado del repositorio de referencia. Bórrala si entregas este archivo a los estudiantes. -->
 
-**Decisión de cuota (del estudiante)**: el plan gratuito de Firestore permite **50 000 lecturas por día** (dato dado por el estudiante; las escrituras diarias del plan gratuito no se han confirmado, verifícalas). Por eso **trabajamos con pocas facturas (10–50)** y **no se procesan las 1000 completas** hasta planificarlo (esperar al día siguiente, o plan Blaze). Una corrida de 1000 ≈ 5 000 lecturas y ≈ 6 000 escrituras; el borrado total y las limpiezas de prueba gastan además el límite diario de borrados. Reglas derivadas:
-- (Actualizado 2026-11-07) El estudiante pidió poder subir 1000 facturas: la interfaz ya no limita; divide la selección en lotes (100 por defecto) y muestra la estimación de lecturas (~5 por factura).
-- Presupuesto aproximado por factura: ~4–5 lecturas (hash, índice de número, cliente, reclamo del archivo) y ~5 escrituras. 50 facturas ≈ 250 lecturas: no es el problema.
-- **El mayor riesgo de lecturas es el sondeo del avance**: cada consulta `count()` cuesta como mínimo 1 lectura. Consultar 5 conteos cada segundo son ~300 lecturas por minuto. Por eso: sondeo cada 3–5 s, **una sola** respuesta con todos los conteos, detener el sondeo cuando el proceso termina o la pestaña está oculta, y mostrar el contador de lecturas estimadas en los scripts de verificación.
-- El Excel y `verificar` leen todas las facturas del proceso (N lecturas): contarlas en el presupuesto.
-- Reprocesar la misma carpeta vuelve a gastar lecturas (el hash evita duplicar datos, no consumo): documenta cuántas se gastaron en cada prueba.
+## 0. Estado del repositorio de referencia (SOLO PROFESOR — léelo primero en una sesión nueva)
 
-**Avance (2026-11-06, misma sesión)**: construidas las fases 1, 2, A, 4 y el código de las fases 3, 5, 6, 7 y 8. Resumen técnico:
-- Fase 1: `src/app`, alias `@/*` → `src/*`, `serverExternalPackages: ["tesseract.js"]` (`firebase-admin` y `sharp` ya vienen excluidos por defecto en Next 16), `outputFileTracingIncludes` para los datos de `@tesseract.js-data/spa/4.0.0_best_int`, `engines.node = 24.x`. Con `cacheComponents`, `export const dynamic` no existe (usar `await connection()`); `maxDuration` sí funciona. Verificado en Vercel (`/api/salud`: datos de tesseract y `sharp` OK).
-- Fase 2: tipos en `src/lib/modelo/tipos.ts`; `npx tsx scripts/verificar-reglas.ts` confirma reglas cerradas (403 anónimo).
-- Fase A: `src/lib/auth/sesion.ts` (`exigirUsuario`), `/api/sesion`, `/login`, `src/proxy.ts`. **Requiere `USUARIOS_PERMITIDOS`** (correos separados por comas) en `.env` y en Vercel; sin ella nadie entra. Verificado: sin cookie las rutas dan 401 y `/` redirige a `/login`. **Falta probar el login real** (necesita el usuario de prueba).
-- Fase 4: extractor/validador puros en `src/lib/ocr/` con 43 pruebas. Medido con 40 facturas de otra semilla: 39 aceptadas, 0 errores no detectados (`scripts/leer-carpeta.ts`).
-- Fases 3/5/6/7/8: subida directa a Blob (`/api/blob/subir`), cola con arrendamiento (`cola.ts`), lote (`lote.ts`), guardado transaccional (`guardar.ts`), avance con `count()`, Excel (`src/lib/excel/generar.ts`), páginas `/` y `/procesos/[id]`. Prueba de extremo a extremo del servidor contra Firestore/Blob reales (`scripts/probar-pipeline.ts`): 10/10 guardadas, 9 clientes, suma del Excel = `sum()` de Firestore = verdad, reproceso con otra ruta: 10/10 duplicadas sin duplicar nada (4,5 s: el hash se mira antes del OCR).
-- **Problema real en Vercel (resuelto)**: `firebase-admin@14.5.0` trae `jwks-rsa@4` → `jose@6` (solo-ESM) y en las funciones de Vercel `require()` de ese módulo falla con `ERR_REQUIRE_ESM` (en local con Node 24 sí funciona, por eso no se vio antes): TODAS las rutas que importaban `firebase-admin/auth` daban 500 en producción. Solución: `overrides` en `package.json` que fuerza `jwks-rsa@3.2.2` (usa `jose@4`, dual CJS/ESM) dentro de `firebase-admin`. Revisar si se puede quitar cuando `firebase-admin` actualice. Verificado en producción: Firestore, Blob, exceljs y tesseract.js cargan; rutas de API dan 401 sin sesión. Lección: probar importaciones en el despliegue, no solo en local.
-- Desviación respecto al texto original: si el NÚMERO de una factura ya existe pero el archivo es distinto (hash distinto), no se descarta como duplicada: se guarda en `revision` con el motivo (podría ser un error del OCR y descartarla perdería una factura). Solo el mismo hash es `duplicada`.
-- Índices: no se necesita ninguno compuesto en el flujo. (Un `sum()` filtrado por `procesoId` sí lo pediría; el script de prueba suma sobre toda la colección.)
+Repositorio: https://github.com/justojaramillo/automation (rama `main`). Producción: https://automation-six-chi.vercel.app (Vercel Hobby, `maxDuration` 300 s). Cuenta de prueba: `billing@me.com` (creada con `scripts/crear-usuario.ts`; la contraseña es débil: cambiarla antes de usar datos reales). Etiquetas de git: `fase-1`, `fase-2`, `fase-a`, `fase-4`, `fase-8` (el trabajo se subió en pocos commits, no uno por fase).
 
-**Interfaz y lotes (2026-11-07)**: menú superior «Procesar facturas» / «Métricas».
-- **Lote = un proceso**: una selección grande se divide en lotes (por defecto de 100; cada uno con su proceso, su Excel y sus métricas). Mientras se sube el siguiente, el **motor** (`src/componentes/Motor.tsx`, en el layout) procesa los anteriores con 3 llamadas `/lote` concurrentes; sigue al cambiar de pestaña y, al abrir cualquier página, retoma los lotes `ejecutando` (idempotente). Un archivo que falla al subir se reintenta 3 veces y queda en una lista para reintentarlo; no detiene el resto.
-- **Métricas**: contadores en `procesos/{id}.metricas` actualizados con `FieldValue.increment` DENTRO de la transacción de cada factura (`metricas.ts`, `metricas-firestore.ts`): aceptadas/revisión con antes de IVA, IVA, impoconsumo y total, errores, duplicadas, clientes nuevos y desglose por NIT de proveedor (solo facturas aceptadas). Abrir el panel cuesta 1 lectura por lote (no recorre facturas) y las cifras se ven en vivo durante la carga. «Leída correctamente» = pasó todas las validaciones (no se compara contra una respuesta conocida); «mal leída» = revisión + error; las duplicadas no cuentan en los porcentajes. `scripts/recalcular-metricas.ts <idLote>` reconstruye las métricas de un lote anterior a los contadores.
-- **Borrar todo** (`/api/datos/borrar`, botón en «Procesar facturas»): borra TODO (de todos los usuarios: facturas, clientes, índices, lotes y Blob), pide escribir BORRAR y se niega con lotes en ejecución salvo confirmación extra. **No se probó contra la base real** (el clasificador de seguridad bloqueó ejecutarlo y es correcto: es un borrado total); solo se verificó el diálogo y la validación. Lo prueba el estudiante.
-- Pruebas de interfaz con navegador real: `scripts/probar-ui.ts` (login → carpeta → lotes → métricas → detalle; limpia SOLO los lotes que creó con `scripts/limpiar-lotes.ts`).
-- **Medido en producción (Vercel Hobby)**: 200 facturas en 2 lotes de 100 → 7 min, 94/100 correctas en cada lote, 0 errores de consola. Subida de 1000 imágenes (108,7 MB; la estimación previa de ~90 MB era baja) en 10 lotes: 89 s, con retraso máximo del navegador de 2 ms (no se bloquea). **NO se procesaron las 1000 completas** (≈ 25–35 min y ≈ 5 000 lecturas / 6 000 escrituras de cuota): solo la subida y la creación de la cola, con el OCR bloqueado a propósito.
-- **Extractor, medición con 60 facturas de otra semilla**: 93 % aceptadas (56/60), 1 error NO detectado (un número de factura mal leído que la aritmética no puede ver). Antes de arreglar la razón social partida con el título («…FACTURA ELECTRÓNICA DE / S.A.S. VENTA») era 82 %: esa falla no apareció en las 50 facturas anteriores. Moraleja: medir siempre con semillas nuevas.
-- Dato de prueba a recordar: dos corridas del generador con semillas distintas numeran ambas `FE-000001…`; al mezclarlas, las facturas con número repetido (hash distinto) quedan en `revision` con «ya existe en otra factura». Es el comportamiento diseñado, no un fallo.
+**Construido y verificado (2026-11-06/07):** todas las fases (0, 1, 2, A, 4, 5, 3, 6, 7, 8) y el generador (G). Fase D parcial: falta la nota de cuota completa y `npm run verificar` no existe (se usa `scripts/leer-carpeta.ts` para medir el extractor).
 
-**Pendiente**
-1. ~~Login y Fase 5 en Vercel~~ **verificado en producción (2026-11-06)** con `scripts/probar-http.ts` y las 10 facturas: login 200, subida directa a Blob, rechazo de rutas/tipos no permitidos, 10/10 aceptadas, 9 clientes nuevos + 1 existente, Excel de 4 hojas, imagen servida, 401 sin cookie. **Medido en Vercel Hobby (3 lotes concurrentes, lotes de 4): 14,7 s para 10 facturas (1,5 s/factura efectivo), 2,7 s medio por archivo (máx 3,6 s)**; en un arranque en frío el primer lote tardó 9 s. Extrapolación NO medida: 1000 facturas ≈ 25 min con esa concurrencia.
-   - Cuenta de prueba `billing@me.com` (script `scripts/crear-usuario.ts`); `USUARIOS_PERMITIDOS` ya está en `.env` y en Vercel (en el panel de Vercel las comillas no se quitan solas: el código las tolera). La contraseña de prueba es débil: cambiarla antes de usar datos reales.
-   - **Dos fallos reales de empaquetado en Vercel, resueltos**: (a) `/lote` daba 504 porque el worker de tesseract (hilo aparte, `require` dinámico) no encontraba `tesseract.js-core` ni sus dependencias: el trazador no las ve → `outputFileTracingIncludes` incluye `tesseract.js`, TODO `tesseract.js-core` (el núcleo elegido depende de la CPU: relaxedsimd/simd/base, con o sin lstm; excluir variantes dio `Cannot find module`) y sus dependencias (paquete simulado de 113 MB, límite 250 MB); (b) el hilo muere en silencio, así que `motor.ts` pone topes de tiempo (60 s) para que falle con mensaje claro en vez de agotar los 300 s. Para simular el empaquetado de Vercel en local: `NEXT_STANDALONE=1 npm run build` y correr `.next/standalone/server.js` (copia solo los archivos trazados; ojo: en local eligió otra variante del núcleo, así que NO detecta todo; la prueba definitiva es el despliegue).
-   - Por qué existe `USUARIOS_PERMITIDOS` aunque se use Firebase Auth: la `apiKey` es pública y el registro libre de Firebase está ABIERTO (comprobado el 2026-11-06: se creó una cuenta con solo la apiKey y se borró). La lista es autorización (quién puede usar la app); Firebase Auth sigue siendo la autenticación (la contraseña nunca está en variables). Alternativa: desactivar el registro en la consola de Firebase (puede requerir Identity Platform; verificar).
-2. Fase D (nota de cuota, política de borrado de blobs, revisión de logs) y `npm run verificar` (Fase 8) aún no están hechas.
-3. Corrida completa de 1000 facturas procesadas: NO hecha (solo se midió la subida). Probar el botón «Borrar todo» y la interfaz en el navegador de los estudiantes (móvil incluido) tampoco está hecho.
+**Datos para los estudiantes:** `/home/justo/projects/facturas` (fuera del repositorio): **1000 imágenes** (600 png + 400 jpg, 108 MB, solo imágenes), generadas con `npm run generar:facturas -- --cantidad 1000 --semilla 2026 --salida ..` (850 clientes distintos, 150 repeticiones, 150 con impoconsumo, 250 por diseño, `FE-000001…FE-001000` únicos). Respuestas correctas: `salida/verdad_1000.json` (**SOLO PROFESOR**; el generador la deja en `../verdad.json` y se movió allí para que no viaje con la carpeta). Cuidado: el generador **borra** `<salida>/facturas`; con `--salida ..` borraría `../facturas`. Las 10 facturas de `salida/facturas` (semilla 2026, cantidad 10, con su `salida/verdad.json`) son solo de desarrollo y **no** forman parte de las 1000 (numeran desde `FE-000001`: mezclarlas duplicaría números).
 
-URL de producción: https://automation-six-chi.vercel.app (plan Hobby, `maxDuration` 300 s).
+**Mediciones del extractor** (offline, `scripts/leer-carpeta.ts`): 10/10 aceptadas (conjunto de desarrollo), 39/40 (semilla 777), 56/60 (semilla 31; era 82 % antes de arreglar la razón social partida con el título de la factura) y, **sobre las 1000 facturas de los estudiantes, 915 aceptadas (92 %) y 85 a revisión; de las aceptadas, 912 totalmente correctas y 3 con error no detectado** (17 min de CPU, sin cuota). Una muestra de 100 del mismo conjunto había dado 85 %: las muestras pequeñas engañan. Exactitud por campo sobre las 1000: número 996, fecha 996, NIT proveedor 987, documento cliente 973, subtotal 991, IVA 981, impoconsumo 997, total 993, nº de ítems 983. Motivos de revisión más comunes: documento del cliente no leído (21), proveedor no leído (11), ítems que no suman el subtotal (10), IVA que no es el 19 % (6).
 
-**Decisión del estudiante (2026-11-06)**: la clave privada de Firebase que se imprimió por error **no se rota por ahora** (proyecto de desarrollo, sin datos reales). No volver a mencionarlo como pendiente; el estudiante conoce el riesgo.
+**Medido en producción (Vercel Hobby):** 10 facturas en 14,7 s (3 lotes concurrentes de 4); 200 facturas en 2 lotes de 100 → ~7 min, 94/100 correctas en cada lote, 0 errores de consola; subida de 1000 imágenes (10 lotes) en 89 s con retraso máximo del navegador de 2 ms. **No se han procesado las 1000 completas en producción** (≈ 25–35 min, ≈ 5 000 lecturas y 6 000 escrituras de cuota).
 
-**Cómo trabajar con `.env` en sesiones nuevas**: no lo leas, ni lo imprimas, ni lo "resumas" con `cat`, `awk`, `sed` ni `grep` que muestre valores. Para comprobar que está completo usa `npx tsx scripts/probar-conexion.ts`; si necesitas ver qué nombres hay, muestra solo la parte anterior al primer `=` de las líneas que no son comentarios y **solo si el valor no se imprime** (por ejemplo `grep -v '^#' .env | cut -d= -f1`).
+**Decisiones del profesor:**
+- Cuota: el plan gratuito de Firestore da 50 000 lecturas al día (dato del profesor; las escrituras y borrados diarios no se han confirmado). Pidió poder subir 1000 facturas, así que la interfaz no limita y muestra la estimación de lecturas.
+- La clave privada de Firebase que se imprimió por error en una sesión anterior **no se rota por ahora** (proyecto de desarrollo, sin datos reales). No mencionarlo como pendiente; el profesor conoce el riesgo.
+- Las contraseñas y claves **nunca** se escriben en este archivo ni en el repositorio.
 
-## 1. Qué hace el sistema
+**Pendiente:** (1) procesar las 1000 completas en producción y anotar la cuota gastada; (2) probar el botón «Borrar todo» contra la base real (una prueba automática no debe ejecutarlo; el sistema de seguridad lo bloqueó con razón) y la interfaz en un teléfono; (3) completar la Fase D (nota de cuota, política de blobs); (4) opcional: `npm run verificar` contra `verdad.json`.
 
-1. El usuario abre la app (desplegada en Vercel) y **elige una carpeta** de su computador con las imágenes de facturas (`.png` / `.jpg`) usando el selector de carpetas del navegador.
-2. Pulsa **Procesar** y, de ahí en adelante, todo es automático:
-   **subir** cada imagen a Vercel Blob → leerla con OCR → extraer campos → validar → guardar en **Firestore** → generar un **Excel**.
-3. El Excel se guarda **en Vercel Blob** (bajo `procesos/<id>/`) y la interfaz ofrece el enlace de descarga. (Un servidor en la nube no puede escribir en el disco del usuario; por eso ya no existe "el Excel queda en la misma carpeta de las imágenes".)
-4. La interfaz muestra el avance en vivo y un resumen final.
+**Mantenimiento de la documentación:** `AGENTS.md` y `CLAUDE.md` se generan con `npm run docs` desde `docs/fuente/` (cabeceras `cabecera-agents.md` y `cabecera-claude.md` + guía en `docs/fuente/guia/*.md`). Edita la fuente y regenera; `npm test` falla si los archivos no coinciden o si la guía menciona un archivo, variable o comando que ya no existe.
 
-### Por qué el diseño cambia en Vercel (explícaselo al estudiante)
+<!-- PROFESOR:FIN -->
 
-- **No hay un proceso que viva mucho tiempo.** Las funciones de Vercel son efímeras (Hobby: máx. 300 s por invocación; Pro: hasta 800 s). El gestor de trabajos en `globalThis` y el "segundo plano" de la versión local **no funcionan**. El avance se guarda en la base de datos y el trabajo se reparte en **lotes pequeños e idempotentes**.
-- **Cuerpo de petición máximo 4,5 MB** en una función. Las imágenes no pueden pasar por nuestra API: el navegador las sube **directo a Blob** (client upload) con un token que emite nuestro servidor.
-- **El sistema de archivos es de solo lectura** (salvo `/tmp`). Todo lo persistente va a Blob o a la base de datos.
-- **1 vCPU en Hobby** (2 vCPU máximo en Pro). Un pool de `worker_threads` no acelera nada en una sola vCPU; el paralelismo se logra con **varias invocaciones concurrentes** de la función.
+<!-- Archivo GENERADO por `npm run docs` (scripts/generar-docs.ts) a partir de docs/fuente/. Edita la fuente, no este archivo. -->
 
-### Datos del ejercicio (criterio de aceptación)
+## 1. Cómo usar esta guía con tu IA
 
-- La carpeta del curso contiene **1000 facturas** de **850 clientes distintos**: 850 clientes aparecen una vez y **150 facturas son de clientes que ya existen** (repetidos).
-- Al terminar el procesamiento de la carpeta completa:
-  - `facturas` debe tener **1000 filas** (las dudosas quedan con `estado = 'revision'`, no se pierden).
-  - `clientes` debe tener **850 filas**, sin duplicados ni clientes inventados por errores del OCR.
-  - Reprocesar la misma carpeta **no debe duplicar nada** (idempotencia), aunque las imágenes se suban otra vez a Blob con otra ruta.
-- Referencia de una prueba previa con 100 facturas (OCR + extracción + validaciones, con SQLite): 88 % aceptadas automáticamente, 12 % a revisión, 76 % totalmente correctas (87 % si solo se cuentan cifras, fechas y NIT). Con 1000 facturas y el campo nuevo de documento del cliente los números pueden variar: **mídelos, no los supongas**.
+Este mismo paso a paso está en `AGENTS.md` (lo leen casi todos los agentes de IA) y en `CLAUDE.md` (lo lee Claude Code): el contenido es idéntico, solo cambian las primeras líneas. Contexto: clase "Tendencias en desarrollo de software", tema **automatización**; se asume que sabes TypeScript y Python.
 
-## 2. Reglas de trabajo para ti (la IA)
+**El objetivo no es que la IA termine el proyecto: es que tú entiendas lo que se construye.** Una IA puede escribir mucho código muy rápido y equivocarse con seguridad; tu trabajo es dirigirla, entender cada paso y comprobar que funciona.
 
-- **Trabaja por fases (sección 5).** Al terminar cada fase: ejecuta la verificación de la fase, muestra el resultado, haz un commit, súbelo a GitHub (Vercel despliega solo) y **detente** hasta que el estudiante diga que continúe.
-- **Nunca inventes credenciales ni asumas valores de conexión.** Los valores los inyecta Vercel (`vercel env pull`); ver Fase 0.
-- **Nunca escribas secretos en el código ni en Git.** Solo en variables de entorno de Vercel y en `.env` (ignorado por Git, verifícalo con `git check-ignore`). **Nunca imprimas el contenido de `.env`** (ni con `cat`, ni con `awk`, ni en logs): para inspeccionarlo muestra solo nombres y longitudes. La clave privada de Firebase solo se usa en el servidor y jamás lleva el prefijo `NEXT_PUBLIC_`. Mantén un `.env.example` con los **nombres** de las variables y valores falsos.
-- **No uses de memoria APIs de versiones nuevas.** Antes de escribir código con Next.js, `firebase-admin`, `firebase`, `@vercel/blob`, tesseract.js o exceljs, comprueba la versión instalada (`npm ls <paquete>`) y lee su documentación oficial o los tipos en `node_modules`. Tu conocimiento puede estar desactualizado. Para Next.js, lee `node_modules/next/dist/docs/` (ver `AGENTS.md`).
-- **Los límites de Vercel cambian**: antes de decidir tamaños de lote, duración o tamaño de bundle, consulta https://vercel.com/docs/functions/limitations y https://vercel.com/docs/vercel-blob/usage-and-pricing.
-- Instala versiones **exactas y actuales** (`npm view <paquete> version`). Comprueba que `vitest`, `firebase-admin` y `@types/node` sean compatibles entre sí (hubo un conflicto de pares con `@types/node@20`; el proyecto usa la serie 24, igual que Node).
-- Si algo del documento no funciona como se describe, **dilo claramente** y explica qué cambiaste. No lo escondas.
-- TypeScript en modo estricto, sin `any` salvo justificación comentada.
-- Convenciones: variables y funciones en `camelCase`, tipos y componentes en `PascalCase`, colecciones de Firestore en `snake_case` en plural (`clientes`, `facturas`, `indices_numero`, `procesos`) y campos en `camelCase`, textos de la interfaz en español.
-- Un commit por fase con mensaje claro (`fase-3: subida de carpeta a Blob`). Etiqueta `fase-N` al terminar.
+### Cómo arrancar cada sesión
+
+Pega esto (cambiando el número de fase) en tu agente:
+
+> Lee `AGENTS.md` (o `CLAUDE.md`) completo. Hoy trabajamos la **Fase N**. Antes de escribir código: (1) dime en máximo 8 líneas qué vas a construir y por qué, (2) lista los archivos que vas a crear o modificar, (3) dime qué comando demuestra que la fase está terminada. Cuando termines, ejecuta esa verificación y pégame la salida **real** (no un resumen). No avances a la siguiente fase hasta que yo lo diga.
+
+### Reglas para ti (el estudiante)
+
+1. **Una fase a la vez.** Cada fase termina con una verificación que se puede ejecutar; si no pasa, la fase no está terminada.
+2. **Ejecuta tú la verificación al menos una vez**, en tu terminal, sin delegarla. Si solo dice "listo" la IA, no sabes si es cierto.
+3. **Pídele que te explique el porqué** de cada decisión (cada fase de esta guía trae una sección "Por qué" que puedes usar como pauta). Si no puedes explicarlo con tus palabras, aún no lo entiendes.
+4. **Lee el diff antes de hacer commit** (`git diff`). Busca: secretos escritos en el código, archivos que no esperabas, pruebas que cambiaron para que pasen.
+5. **Nunca pegues credenciales en el chat con la IA** (ni el contenido de `.env`, ni la clave privada de Firebase). Todo lo que pegas queda registrado fuera de tu computador. Si ocurre, considera la credencial comprometida y genera una nueva (ver Fase 0).
+6. **Una IA equivocada se nota así**: usa funciones o archivos que no existen en las versiones instaladas; dice "debería funcionar" sin ejecutar nada; modifica las pruebas en vez de arreglar el código; toca archivos que nada tienen que ver con la fase; borra o sobrescribe sin mirar antes. Ante cualquiera de estas, detén la sesión y pídele que lo revierta.
+
+### Qué vas a construir (resultado final)
+
+```
+ navegador                                   Vercel (funciones)                       servicios
+┌───────────────────────┐   token de subida  ┌──────────────────────────┐
+│ 1. eliges la carpeta  │ ─────────────────► │ POST /api/blob/subir     │
+│ 2. se divide en lotes │                    └──────────────────────────┘
+│ 3. subes cada imagen  │ ══ directo ═══════════════════════════════════════════►  Vercel Blob (privado)
+│    (sin pasar por API)│
+│ 4. POST …/iniciar     │ ─────────────────► crea la cola en Firestore   ───────►  Firestore
+│                       │                                                          (clientes, facturas,
+│ MOTOR (segundo plano) │   3 llamadas       ┌──────────────────────────┐          índices, procesos,
+│ llama a …/lote en     │ ─────────────────► │ POST …/lote              │          métricas)
+│ paralelo (x3)         │   concurrentes     │ reclama 4 archivos       │ ◄──────►
+│                       │                    │ descarga de Blob ◄───────┼───────►  Vercel Blob
+│ 5. POST …/finalizar   │ ─────────────────► │ OCR → extraer → validar  │
+│                       │                    │ guarda (transacción)     │
+│ 6. ve métricas, tabla,│ ◄───────────────── │ genera Excel ────────────┼───────►  Vercel Blob (Excel)
+│    descarga el Excel  │                    └──────────────────────────┘
+└───────────────────────┘     (todas las rutas exigen sesión de Firebase Auth)
+```
+
+Funciones finales: inicio de sesión (correo y contraseña); subir una carpeta de hasta 1000 facturas que se divide en **lotes**; procesamiento automático en segundo plano con avance en vivo (incluye antes de IVA, IVA, impoconsumo y total acumulados); un **Excel por lote**; **panel de métricas** (facturas leídas correctamente vs mal leídas, por lote o en total, y totales por razón social); tabla de resultados con la imagen original de cada factura; y un botón para borrar todos los datos de prueba.
+
+## 2. Reglas de trabajo (para la IA y para ti)
+
+Estas reglas existen porque cada una evitó (o habría evitado) un problema real durante la construcción del proyecto de referencia.
+
+1. **Trabaja por fases (sección 6) y detente al terminar cada una.** Al terminar: ejecuta la verificación de la fase, muestra la salida real, haz un commit (`fase-N: …`), etiqueta (`git tag fase-N`), súbelo a GitHub (Vercel despliega solo) y **espera** a que el estudiante diga que continúe.
+2. **Nunca inventes credenciales ni valores de conexión.** Los crea el estudiante en las consolas (Fase 0); tú solo guías. **Nunca escribas secretos en el código ni en Git.**
+3. **Nunca imprimas el contenido de `.env`** (ni con `cat`, ni con `awk`, ni con `grep` que muestre valores, ni en logs). Para saber qué variables existen, muestra solo los nombres: `grep -v '^#' .env | cut -d= -f1`. Para saber si funcionan, ejecuta `npx tsx scripts/probar-conexion.ts`. (Un `awk` que partía cada línea en el primer `=` imprimió la clave privada de Firebase, porque su contenido base64 trae `=`.) Mantén `.env*` en `.gitignore` (con la excepción `!.env.example`) **antes** de que existan archivos con secretos, y mantén `.env.example` con los nombres y valores falsos. La clave privada de Firebase solo se usa en el servidor y **jamás** lleva el prefijo `NEXT_PUBLIC_`.
+4. **No escribas de memoria APIs de librerías.** Tu conocimiento puede estar desactualizado y estas versiones son nuevas. Antes de usar Next.js, `firebase-admin`, `firebase`, `@vercel/blob`, `tesseract.js`, `exceljs` o `zod`: comprueba la versión instalada (`npm ls <paquete>`) y lee los tipos en `node_modules/<paquete>` o su documentación oficial. Para Next.js, lee `node_modules/next/dist/docs/`. Instala versiones **exactas** (`npm install --save-exact`) tras mirar la última (`npm view <paquete> version`).
+5. **Los límites de Vercel cambian.** Antes de decidir duración, tamaño de lote o tamaño de paquete, consulta https://vercel.com/docs/functions/limitations y https://vercel.com/docs/vercel-blob/usage-and-pricing.
+6. **Pide permiso antes de acciones difíciles de deshacer o que salgan de tu computador**: crear cuentas o recursos en la nube, cambiar variables de entorno, desplegar, `git push --force`, y sobre todo **borrar datos** (incluido el botón «Borrar todo» de la aplicación, que vacía Firestore y Blob completos). Las pruebas automáticas deben **limpiar solo lo que ellas mismas crearon**, nunca "todo".
+7. **Sé honesto con los resultados.** Si una prueba falla, muestra la salida. Si un paso de esta guía no funciona como dice, dilo y explica qué cambiaste. **Nunca modifiques una prueba para que pase** sin explicar por qué la prueba estaba mal. **Mide, no supongas**: las cifras de exactitud de esta guía son de un conjunto concreto; el tuyo puede variar.
+8. **Verifica en el despliegue, no solo en local.** Dos fallos de este proyecto solo aparecían en Vercel (Fase A y Fase 5) y pasaban todas las pruebas locales. Una fase que toca servidor no está terminada hasta que funciona en la URL desplegada.
+9. **No te adelantes ni agregues funciones que no pidió la fase.** Si ves una mejora, propónla al final; no la hagas sin que te la pidan.
+10. **Código**: TypeScript en modo estricto, sin `any` (salvo justificación en un comentario). `camelCase` para variables y funciones, `PascalCase` para tipos y componentes, colecciones de Firestore en `snake_case` plural (`clientes`, `facturas`, `indices_numero`, `procesos`), campos en `camelCase`, importes en pesos COP como **enteros** (nunca decimales). Comentarios en español que expliquen el *porqué*, no el *qué*.
+11. **Commits**: uno por fase, mensaje `fase-3: subida de carpeta a Blob`, y etiqueta `fase-N`. Antes de commitear: `npm run lint`, `npx tsc --noEmit` y `npm test` deben pasar.
+12. **Si una credencial se imprime o se pega por error** en un chat, un log o un commit, considérala comprometida: genera una nueva en la consola del servicio, borra la anterior y actualiza `.env` y Vercel.
 
 ### Detector de código desactualizado (Next.js 16)
 
-Si vas a escribir algo de esta lista, para y revisa la documentación:
-`middleware.ts` ahora es **`proxy.ts`**; `params` y `searchParams` son **`Promise`** (hay que hacer `await`); las rutas dinámicas de Route Handlers reciben `RouteContext`; no uses `getServerSideProps`/`pages/`; `next lint` ya no existe (usa ESLint directo); paquetes nativos o WASM del servidor se declaran en `serverExternalPackages`. El proyecto actual usa `cacheComponents: true`: las rutas de API y las lecturas de base de datos deben ser dinámicas (revisa cómo afecta esa opción antes de escribir páginas que lean la base de datos).
+Si vas a escribir algo de esta lista, **para y lee la documentación** en `node_modules/next/dist/docs/`:
 
-## 3. Pila tecnológica
+- `middleware.ts` ahora es **`proxy.ts`** (exporta `proxy`, no `middleware`).
+- `params` y `searchParams` son **`Promise`**: hay que hacer `await`. Las rutas dinámicas de Route Handlers reciben `RouteContext<"/api/…/[id]">`; ese tipo lo genera `npx next typegen` (si TypeScript dice que no existe, ejecútalo).
+- No uses `getServerSideProps`, `pages/` ni `next lint` (no existe: usa ESLint directo, `npm run lint`).
+- Paquetes nativos o con WASM/hilos del servidor se declaran en `serverExternalPackages` (aquí: `tesseract.js`; `firebase-admin` y `sharp` ya vienen excluidos por defecto).
+- Con `cacheComponents: true` (que usa este proyecto): **no existen** `export const dynamic`, `revalidate` ni `fetchCache` (dan error de compilación); una ruta es dinámica si lee algo de la petición o si llama `await connection()` de `next/server`; las páginas con segmentos dinámicos (`/procesos/[id]`) leen `params` dentro de un `<Suspense>`. `export const maxDuration` sí funciona.
+- `cookies()` y `headers()` son asíncronas.
+- React 19 + reglas de lint del proyecto: no llamar `setState` de forma síncrona dentro de un `useEffect`; no llamar funciones impuras (`Date.now()`) al renderizar.
 
-| Pieza | Elección | Nota |
+## 3. Pila tecnológica y versiones exactas
+
+| Pieza | Elección (versión del repositorio de referencia) | Por qué / nota |
 |---|---|---|
-| Hosting | **Vercel** (proyecto enlazado al repositorio de GitHub) | Cada `git push` despliega. Fluid compute activo (por defecto). |
-| Framework | Next.js (la versión ya instalada en el repo, 16.x), App Router, TypeScript estricto | Route Handlers como API. |
-| Archivos | **Vercel Blob**, store **privado** (`@vercel/blob`) | Las facturas contienen datos de clientes: store privado, lectura solo desde nuestras funciones. Subida desde el navegador con `upload()` de `@vercel/blob/client` y una ruta `handleUpload`. El acceso (privado/público) **no se puede cambiar** después de crear el store. |
-| Base de datos | **Cloud Firestore** (proyecto de Firebase), acceso **solo desde el servidor** con `firebase-admin` | NoSQL de documentos. La cuenta de servicio se salta las reglas de seguridad, así que las **reglas de Firestore deben quedar en "denegar todo"**: ningún navegador accede directo a los datos. Los enteros de JavaScript se guardan como enteros de 64 bits (los pesos COP no pierden precisión). |
-| Autenticación | **Firebase Authentication** con correo y contraseña | Inicio de sesión en el navegador con `firebase/auth`; el servidor intercambia el ID token por una **cookie de sesión** (`createSessionCookie`) y la verifica en cada ruta de API con `verifySessionCookie`. |
-| OCR | `tesseract.js` 7 + `@tesseract.js-data/spa` | WASM puro. Los datos de idioma vienen del paquete npm, con `langPath` local; hay que **incluirlos en el bundle de la función** con `outputFileTracingIncludes`. |
-| Imagen | `sharp` | Preprocesado de reintento. Binarios nativos: `serverExternalPackages`. |
-| Validación | `zod` 4 | Esquemas y reglas de negocio. |
-| Excel | `exceljs` | Celdas numéricas reales (no texto) con formato de moneda. Se genera en memoria (Buffer) y se sube a Blob. |
-| Pruebas | `vitest` | Pruebas unitarias del extractor y los validadores. |
-| Solo para el profesor (Fase G) | `@faker-js/faker`, `playwright`, `sharp` | Generador de facturas sintéticas. Los estudiantes **no** lo ejecutan. |
+| Hosting | **Vercel**, plan Hobby, proyecto enlazado a GitHub | Cada `git push` despliega. Node 24 (`"engines": { "node": "24.x" }`). |
+| Framework | **Next.js 16.4.5**, App Router, TypeScript estricto, React 19.3.0 | Route Handlers como API. Opción `cacheComponents: true`. |
+| Archivos | **Vercel Blob** (`@vercel/blob` 2.8.2), store **privado** | Las facturas tienen datos de clientes. El acceso (privado/público) **no se puede cambiar** tras crear el store. El navegador sube directo con `upload()` de `@vercel/blob/client` y un token que emite nuestro servidor. |
+| Base de datos | **Cloud Firestore** vía `firebase-admin` 14.5.0, **solo desde el servidor** | NoSQL de documentos. La cuenta de servicio se salta las reglas, por eso las **reglas deben quedar en "denegar todo"**. |
+| Autenticación | **Firebase Authentication** (correo y contraseña): `firebase` 13.2.0 en el navegador | El servidor cambia el ID token por una **cookie de sesión** y la verifica en cada ruta. |
+| OCR | `tesseract.js` 7.0.0 + `@tesseract.js-data/spa` 1.0.0 | WASM; los datos del idioma vienen del paquete npm (sin descargas de red). |
+| Imagen | `sharp` 0.35.5 | Preprocesado para el reintento de OCR. |
+| Validación | `zod` 4.6.7 | Instalado para validar entradas; las reglas de negocio de las facturas son funciones puras propias. |
+| Excel | `exceljs` 4.4.0 | Celdas numéricas reales con formato de moneda. |
+| Estilos | Tailwind CSS 4 | Colores como variables CSS por rol, con modo oscuro. |
+| Pruebas | `vitest` 5.1.0; `playwright` 1.65.0 para probar la interfaz con navegador real | |
+| Solo profesor | `@faker-js/faker` 10.6.0 (+ `playwright`, `sharp`) | Generador de facturas sintéticas (Fase G). |
+| Parche necesario | `overrides: { "firebase-admin": { "jwks-rsa": "3.2.2" } }` en `package.json` | Ver Fase A: sin esto, `firebase-admin/auth` no carga en Vercel. |
 
-### OCR en Vercel (sin pool propio de workers)
+Comprobar compatibilidad entre `vitest`, `firebase-admin` y `@types/node` (hubo un conflicto de pares con `@types/node@20`; el proyecto usa la serie 24, igual que Node).
 
-`tesseract.js` ya usa `worker_threads` internamente en Node. Con 1 vCPU, nuestro pool de `worker_threads` no aporta. En su lugar:
+## 4. Por qué el diseño es así (restricciones de Vercel)
 
-- Un módulo `src/lib/ocr/motor.ts` crea **un** worker de tesseract (idioma `spa`, `langPath` local, sin descargas de red) y lo **reutiliza entre invocaciones** de la misma instancia caliente (guardado en `globalThis`).
-- Cada invocación de `POST /api/procesos/[id]/lote` procesa un **lote pequeño** (tamaño a medir; punto de partida 6–10 imágenes, siempre muy por debajo de `maxDuration`) y responde.
-- El paralelismo lo da el **cliente**, que lanza 3–4 llamadas de lote concurrentes (Vercel crea una instancia por cada una).
-- Si se comprueba que el worker no carga bajo el bundler de Next/Vercel, usa `workers/ocr-worker.mjs` (JS plano, solo OCR, `new Worker(path.resolve(process.cwd(), "workers/ocr-worker.mjs"))`) y **documenta por qué**. El análisis del texto y la escritura en la base de datos siempre van en TypeScript fuera del worker.
+Entender estas cuatro restricciones explica casi todas las decisiones del proyecto:
 
-## 4. Lo que NO está verificado (compruébalo y repórtalo)
+1. **No hay un proceso que viva mucho tiempo.** Las funciones son efímeras (Hobby: máximo 300 s por invocación). Un "trabajo en segundo plano" en memoria del servidor no funciona. Por eso el avance se guarda en la base de datos y el trabajo se reparte en **lotes pequeños e idempotentes** (se pueden repetir sin duplicar nada) que un **motor en el navegador** va pidiendo.
+2. **El cuerpo de una petición no pasa de 4,5 MB.** Las imágenes no pueden pasar por nuestra API: el navegador las sube **directo a Blob** con un token de un solo uso.
+3. **El sistema de archivos es de solo lectura** (salvo `/tmp`). Todo lo persistente va a Blob o a Firestore. Un servidor en la nube tampoco puede escribir en el disco del usuario: el Excel se guarda en Blob y se descarga desde la interfaz.
+4. **1 vCPU en Hobby.** Un pool propio de hilos no acelera nada; el paralelismo se logra con **varias invocaciones concurrentes** de la función (el motor lanza 3 llamadas `lote` a la vez y Vercel crea una instancia por cada una).
 
-La lógica de OCR, extracción y validación sí se probó con 100 facturas. Lo siguiente **no se ha probado** en conjunto y puede fallar; si falla, explica el motivo y la corrección:
+Consecuencia de seguridad: al no existir un explorador de carpetas del servidor desaparece el riesgo de recorrer su disco, pero aparece otro: cualquiera con la URL podría gastar cuota de Blob, Firestore y CPU. Por eso la autenticación se construye **antes** de la subida (Fase A) y todas las rutas la exigen.
 
-- Next.js 16 (con `cacheComponents`) + tesseract.js + `sharp` **dentro de una función de Vercel**: rutas de WASM y `langPath`, tamaño del bundle (límite 250 MB sin comprimir), arranque en frío.
-- `firebase-admin` + Next.js 16 dentro de funciones de Vercel (¿necesita `serverExternalPackages`?, arranque en frío, la clave privada con `\n` en variables de entorno de Vercel).
-- Subida directa a Blob con `upload()` de ~1000 archivos (~90 MB): concurrencia del navegador, reintentos, límites del plan.
-- El reclamo de lotes concurrentes sin procesar dos veces el mismo archivo (transacción de Firestore con consulta; comportamiento bajo contención).
-- El tiempo con 1000 imágenes en 1 vCPU por invocación: **mídelo** (no hay estimación fiable; puede ser claramente mayor que los 4–12 min de la prueba local con varios núcleos).
-- Costos/cuotas del plan Hobby de Vercel (Blob, CPU activa) y del plan gratuito de Firestore (recuerdo límites diarios de lecturas, escrituras y borrados del orden de decenas de miles, pero **verifícalo en la documentación vigente**): repórtalos con números medidos, no los supongas. Una corrida de 1000 facturas hace varios miles de lecturas y escrituras; varias corridas de prueba el mismo día pueden agotar la cuota diaria.
+## 5. Mapa del repositorio
 
-## 5. Fases
+```
+src/app/                       páginas y Route Handlers (la API)
+  page.tsx                     «Procesar facturas» (subida por lotes)
+  metricas/page.tsx            panel de métricas
+  procesos/[id]/page.tsx       detalle de un lote (avance, Excel, tabla de facturas)
+  login/page.tsx               inicio de sesión
+  api/sesion/route.ts          login/logout: ID token → cookie de sesión
+  api/blob/subir/route.ts      emite tokens de subida directa a Blob (valida todo)
+  api/procesos/route.ts        crea un lote / lista los del usuario
+  api/procesos/[id]/…          iniciar, lote, finalizar, excel, facturas, estado
+  api/metricas/route.ts        métricas de todos los lotes (1 lectura por lote)
+  api/facturas/[hash]/imagen/  sirve la imagen original desde el Blob privado
+  api/datos/borrar/route.ts    «Borrar todo» (confirmación escrita)
+  api/salud/route.ts           diagnóstico del despliegue (exige sesión)
+src/proxy.ts                   redirección optimista a /login si no hay cookie
+src/componentes/               Motor, MenuSuperior, NuevoProceso, PanelMetricas, VistaProceso, ui…
+src/lib/firebase/              admin.ts (servidor) y cliente.ts (navegador, solo Auth)
+src/lib/auth/sesion.ts         cookie de sesión y exigirUsuario(request)
+src/lib/modelo/tipos.ts        tipos de las colecciones de Firestore
+src/lib/ocr/                   motor (tesseract), extractor, validador, nit, leer-factura
+src/lib/procesamiento/         cola, lote, guardar, iniciar, finalizar, metricas, avance
+src/lib/excel/generar.ts       generación del Excel
+src/lib/blob.ts, rutas.ts      utilidades de Blob (servidor) y de rutas (servidor y navegador)
+scripts/                       verificaciones y herramientas (ver sección 9)
+docs/fuente/                   fuente de AGENTS.md y CLAUDE.md (solo en el repositorio de referencia)
+```
+
+## 6. Datos del ejercicio y plan paso a paso
+
+### Datos del ejercicio (criterio de aceptación)
+
+El profesor entrega **una carpeta `facturas/` con 1000 imágenes** (`factura_0001.png|jpg` … `factura_1000`), solo imágenes, de **850 clientes distintos**: 850 clientes aparecen una vez y **150 facturas son de clientes que ya existen** (repetidos). Las imágenes son sintéticas (datos ficticios): 4 diseños de factura (250 de cada uno), 3 calidades (60 % limpias, 30 % de calidad media, 10 % malas: rotadas, borrosas o de baja resolución), 150 con impoconsumo (telefonía móvil). **Esa carpeta se elige desde el navegador** (selector de carpeta) y se sube a Blob: no se copia a ninguna ruta del servidor.
+
+Al terminar de procesar la carpeta completa:
+
+- `facturas` tiene **1000 documentos**. Las dudosas quedan con `estado = "revision"`: **no se pierden**.
+- `clientes` tiene **850 documentos**, sin duplicados ni clientes inventados por errores del OCR.
+- **Reprocesar la misma carpeta no duplica nada** (idempotencia), aunque las imágenes se suban otra vez con otra ruta.
+- Cada lote tiene su Excel y sus métricas; la suma de la columna Total del Excel coincide con la base de datos.
+
+**Qué exactitud esperar.** Medida en el repositorio de referencia **sobre las 1000 facturas del curso** (solo extracción, sin base de datos): **915 aceptadas automáticamente (92 %) y 85 a revisión**; de las 915 aceptadas, **912 totalmente correctas y 3 con un error que la validación no detectó**. Con otros conjuntos de facturas la cifra varió entre 82 % y 98 %, y una muestra de 100 del mismo conjunto dio 85 %: una muestra pequeña engaña. El 100 % no existe con OCR sobre imágenes degradadas. Los motivos de revisión más comunes: documento del cliente no leído, proveedor no leído e ítems que no suman el subtotal. Una factura "aceptada" solo significa que pasó todas las validaciones; un error que cuadre aritméticamente (por ejemplo, un dígito mal leído en el número de factura) puede pasar. **Mide con tu conjunto; no supongas.**
+
+### Orden recomendado
+
+Las fases conservan el número histórico (por eso `fase-3` va después de `fase-5`): el orden de trabajo es el de esta tabla.
+
+| Paso | Fase | Resultado | Cómo se demuestra |
+|---|---|---|---|
+| 1 | 0 | Cuentas y conexiones | `npx tsx scripts/probar-conexion.ts` → Firestore OK, Auth OK, Blob OK |
+| 2 | 1 | Proyecto base y primer despliegue | `npm run build` y la URL de Vercel abre |
+| 3 | 2 | Modelo de datos y reglas cerradas | `npx tsx scripts/verificar-reglas.ts` → 403 anónimos |
+| 4 | A | Autenticación | login real + `curl` a `/api/procesos` sin cookie → 401 |
+| 5 | 4 | Extractor y validador (lógica pura) | `npm test` |
+| 6 | 5 | OCR dentro de una función de Vercel | 20 facturas leídas **en el despliegue** |
+| 7 | 3 | Subida de la carpeta a Blob | 20 archivos bajo `procesos/<id>/` en el panel de Blob |
+| 8 | 6 | Lotes, cola y guardado idempotente | procesar dos veces no duplica nada |
+| 9 | 7 | Excel en Blob | la suma del Excel = la suma en Firestore |
+| 10 | 8 | Interfaz, motor, métricas y borrado | recorrido completo con navegador real |
+| 11 | D | Operación en Vercel | logs sin errores, nota de cuota |
 
 ### Fase 0 — Cuentas y conexiones (PREGUNTAR, no asumir)
 
-**Estado: completada para este repositorio** (Firebase, Blob y variables creados por el estudiante; `scripts/probar-conexion.ts` en verde). Para otro estudiante o un entorno nuevo, esta fase es obligatoria y va **antes de escribir cualquier código de base de datos o de Blob**. El estudiante crea sus recursos; tú lo guías y **nunca inventas ni escribes a mano valores de credenciales**.
+**Objetivo.** Tener todos los servicios creados y el archivo `.env` completo, y comprobar que el computador se conecta a los tres: Firestore, Authentication y Blob. Va **antes de escribir cualquier código de base de datos o de Blob**. El estudiante crea los recursos; la IA solo lo guía y **nunca inventa ni escribe a mano valores de credenciales**.
 
-1. Pregunta, uno por uno: URL del repositorio de GitHub; si el proyecto de Vercel ya está creado y enlazado; plan de Vercel (Hobby o Pro: determina `maxDuration` 300 s / 800 s y la CPU).
-2. Guíalo para crear: proyecto en **Firebase** → **Firestore Database** (modo producción, región cercana a las funciones de Vercel; la ubicación no se puede cambiar) → **Authentication → Método de acceso → Correo electrónico/contraseña** → una **app web** (configuración pública) → **Cuentas de servicio → Generar nueva clave privada** (JSON secreto) → en Vercel, **Storage → Blob, store privado** conectado al proyecto.
-3. Variables en `.env` (copia `.env.example`; los nombres son estos, y la clave privada lleva los saltos de línea escritos como `\n`):
-   - Blob: `BLOB_STORE_ID`, `BLOB_READ_WRITE_TOKEN`.
-   - Firebase web (públicas por diseño): `NEXT_PUBLIC_FIREBASE_API_KEY`, `..._AUTH_DOMAIN`, `..._PROJECT_ID`, `..._STORAGE_BUCKET`, `..._MESSAGING_SENDER_ID`, `..._APP_ID`.
-   - Firebase Admin (secretas, solo servidor): `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`. Del JSON de la cuenta de servicio solo se necesitan esos tres campos; no copies el resto.
-   - Las mismas variables se definen en Vercel (Settings → Environment Variables) para Production, Preview y Development.
-4. Verifica que `.env*` esté en `.gitignore` **antes** de que existan los archivos con secretos (con la excepción `!.env.example`).
-5. `scripts/probar-conexion.ts` escribe, lee y borra un documento temporal en Firestore, lista usuarios de Authentication y lista el almacén de Blob; imprime éxito o el error de cada uno. **No continúes hasta que funcione.**
+**Pasos.**
+1. Repositorio en GitHub (vacío o con el proyecto base). Pregunta al estudiante la URL.
+2. Cuenta de **Vercel** (plan Hobby) e importar el repositorio como proyecto (cada `git push` despliega).
+3. Proyecto de **Firebase** (https://console.firebase.google.com):
+   - **Firestore Database** → modo **producción**; elige una región cercana a las funciones de Vercel (por defecto Washington D.C., `iad1`). **La ubicación no se puede cambiar después.**
+   - **Authentication → Método de acceso →** habilitar **Correo electrónico/contraseña**.
+   - **Configuración del proyecto → Tus apps →** crear una **app web** (da la configuración pública).
+   - **Configuración del proyecto → Cuentas de servicio → Generar nueva clave privada** (un JSON secreto). De él solo se necesitan **tres campos**; no copies el resto.
+4. En Vercel: **Storage → Blob →** crear un store **privado** y conectarlo al proyecto (esto crea `BLOB_READ_WRITE_TOKEN` en Vercel).
+5. Copia `.env.example` a `.env` y rellénalo. Los **nombres** son estos (los valores son tuyos y nunca se suben a Git):
 
-Problemas conocidos para explicar si falla: clave privada con saltos de línea mal escritos (debe ser `\n` literal dentro de comillas dobles); Firestore sin crear o con otra ubicación; Firestore API deshabilitada en Google Cloud; variables no definidas en el entorno correcto de Vercel; token de Blob ausente en local.
+| Variable | De dónde sale | Pública |
+|---|---|---|
+| `BLOB_STORE_ID`, `BLOB_READ_WRITE_TOKEN` | Vercel → Storage → tu store (o `vercel env pull`) | No |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`, `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID` | configuración de la app web de Firebase | Sí, por diseño |
+| `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY` | del JSON de la cuenta de servicio (`project_id`, `client_email`, `private_key`) | **No, solo servidor** |
+| `USUARIOS_PERMITIDOS` | correos autorizados, separados por comas (ver Fase A) | No |
+| `DEEPSEEK_API_KEY` | opcional; el flujo no la usa | No |
 
-**Si una credencial se imprime o se pega por error en un chat, un log o un commit, considérala comprometida:** genera una nueva clave privada en Firebase, borra la anterior (por su `private_key_id`), actualiza `.env` y Vercel.
+   La clave privada lleva los saltos de línea escritos como `\n` literales y va **entre comillas dobles en `.env`**. En el **panel de Vercel** pega los valores **sin comillas** (allí las comillas se guardan tal cual y rompen el valor).
+6. Define **las mismas variables en Vercel** (Settings → Environment Variables) para Production, Preview y Development. **Las variables solo se aplican a despliegues nuevos**: después de cambiarlas, haz Redeploy.
+7. Comprueba que `.env*` está en `.gitignore` (con `!.env.example`) con `git check-ignore .env` **antes** de crear el archivo.
+8. Escribe `scripts/probar-conexion.ts`: escribe, lee y borra un documento temporal en Firestore; lista usuarios de Authentication; lista el almacén de Blob; imprime "OK" o el error de cada uno **sin imprimir secretos**.
+9. Crea un usuario de prueba: en la consola (Authentication → Usuarios) o con `scripts/crear-usuario.ts` (lee `CORREO` y `CLAVE` de variables de entorno, así la contraseña no queda en ningún archivo).
 
-Verificación: `npx tsx scripts/probar-conexion.ts` imprime "Firestore OK", "Auth OK" y "Blob OK".
+**Por qué.** Los tres servicios son la base de todo; si fallan, los errores de fases posteriores son imposibles de interpretar. La clave privada da **acceso de administrador** a tu proyecto de Firebase (se salta las reglas de seguridad): por eso vive solo en el servidor.
+
+**Verificación.** `npx tsx scripts/probar-conexion.ts` imprime `Firestore OK`, `Auth OK` y `Blob OK`. No continúes hasta que funcione.
+
+**Errores típicos.** Clave privada con saltos de línea mal escritos (debe ser `\n` literal entre comillas dobles); Firestore sin crear o con la API deshabilitada en Google Cloud; variables definidas en el entorno equivocado de Vercel; token de Blob ausente en local; comillas pegadas en el panel de Vercel.
+
+**Pídele a tu IA.** "Guíame paso a paso para crear Firebase y Blob. No me pidas que te pegue ningún valor secreto; solo dime dónde copiarlo y cómo comprobar que quedó bien con `probar-conexion.ts`."
+
+---
 
 ### Fase 1 — Proyecto base y primer despliegue
 
-- El repo ya contiene el proyecto creado con `create-next-app` (Next 16, App Router, TypeScript, ESLint, Tailwind). **Revisa lo que ya hay** antes de añadir nada.
-- Quita dependencias de fuentes de Google (`next/font/google`) si existen.
-- Estructura sugerida:
-  ```
-  src/app/                    páginas y Route Handlers
-  src/lib/firebase/admin.ts   Firebase Admin (Firestore y Auth), solo servidor
-  src/lib/firebase/cliente.ts Firebase Auth en el navegador (variables NEXT_PUBLIC_*)
-  src/lib/auth/sesion.ts      cookie de sesión y `exigirUsuario(request)`
-  src/lib/blob.ts             utilidades de Blob (rutas, lectura de un archivo)
-  src/lib/ocr/                motor tesseract, extractor, validadores, tipos
-  src/lib/procesamiento/      lotes, reclamo de archivos, finalización
-  src/lib/excel/              generador del Excel
-  scripts/                    probar-conexion, verificar, generar-facturas (profesor)
-  ```
-- Configura `serverExternalPackages` (`tesseract.js`, `sharp`) y `outputFileTracingIncludes` para los datos de idioma de `@tesseract.js-data/spa`.
-- Comprueba en la documentación de Next 16 si `firebase-admin` y `@vercel/blob` requieren entrar en `serverExternalPackages`.
-- Haz el **primer despliegue ahora** (push a GitHub) aunque la página sea trivial: así los problemas de despliegue aparecen pronto y no al final.
+**Objetivo.** Un proyecto Next.js limpio, configurado para lo que viene, **desplegado ya** (así los problemas de despliegue aparecen pronto y no al final).
 
-Verificación: `npm run dev` abre la página inicial; `npm run build` termina sin errores; el despliegue de Vercel queda en verde y la URL abre la página.
+**Qué construyes.** `package.json`, `next.config.ts`, `src/app/layout.tsx`, `src/app/page.tsx` trivial y `src/app/api/salud/route.ts`.
+
+**Pasos.**
+1. `npx create-next-app@latest` con TypeScript, ESLint, Tailwind, App Router, carpeta `src/` y alias de importación `@/*` → `src/*`. Revisa lo que genera antes de añadir nada.
+2. Quita `next/font/google` (el entorno de build no siempre tiene acceso) y los archivos de ejemplo que no uses.
+3. Fija Node: `"engines": { "node": "24.x" }` (que coincida con tu Node local).
+4. En `next.config.ts`: `cacheComponents: true`, `serverExternalPackages: ["tesseract.js"]` y `outputFileTracingIncludes` (se completa en la Fase 5). `firebase-admin` y `sharp` **ya vienen excluidos por defecto**.
+5. Instala dependencias con versiones exactas (sección 3). Al instalar `firebase-admin`, añade desde ya el `overrides` de `jwks-rsa` (ver Fase A).
+6. `/api/salud`: ruta de diagnóstico que devuelve solo booleanos y nombres (nunca valores): si los datos de idioma de tesseract están en la función, si `sharp` carga y qué variables de entorno faltan. Usa `await connection()` para que se ejecute en cada petición.
+7. Haz push y mira el despliegue.
+
+**Por qué.** `serverExternalPackages` evita que el empaquetador rompa paquetes con hilos o WASM. `/api/salud` convierte "no sé qué pasa en Vercel" en un JSON legible.
+
+**Verificación.** `npm run dev` abre la página; `npm run build` termina sin errores; el despliegue de Vercel queda en verde y su URL abre la página.
+
+**Errores típicos.** `export const dynamic = "force-dynamic"` da error con `cacheComponents` (usa `await connection()`); una variable de entorno nueva no llega porque no hubo Redeploy.
+
+**Pídele a tu IA.** "Antes de configurar `next.config.ts`, lee `node_modules/next/dist/docs/` sobre `cacheComponents`, `serverExternalPackages` y `outputFileTracingIncludes` y dime qué cambia respecto a lo que tú recuerdas."
+
+---
 
 ### Fase 2 — Modelo de datos (Firestore)
 
-Firestore es de **documentos**, no relacional: aquí el diseño parte de qué consultas necesitamos y de cómo garantizar **unicidad** (no hay `UNIQUE`): la unicidad se logra usando el valor único como **ID del documento** y creando el documento dentro de una **transacción**. Explícaselo al estudiante frente al modelo relacional que ya conoce.
+**Objetivo.** Diseñar las colecciones y dejar las reglas de Firestore cerradas.
 
-Colecciones (campos en `camelCase`; importes COP como **enteros**, nunca decimales; fechas como texto `yyyy-mm-dd` y marcas de tiempo como `Timestamp`):
+**Qué construyes.** `src/lib/firebase/admin.ts` (inicializa `firebase-admin` una vez; solo servidor), `src/lib/modelo/tipos.ts` y `scripts/verificar-reglas.ts`.
 
-- `clientes/{documento}`: `documento` (NIT sin puntos ni guion ni DV; es el ID, así que no puede haber dos), `dv`, `nombre`, `creadoEn`, `primerProcesoId`.
-- `facturas/{hashArchivo}`: el ID es el **SHA-256** de la imagen (siempre existe, aunque el OCR falle) → el mismo archivo nunca se guarda dos veces. Campos: `numero`, `fecha` (emisión), `proveedor` (razón social), `nitProveedor`, `clienteDocumento` (`null` si no se pudo validar: queda en revisión y **no se crea cliente**), `subtotal` (valor antes de IVA), `iva`, `impoconsumo` (0 si no aplica), `total`, `estado` (`aceptada` | `revision`), `motivos` (lista de textos), `archivo` (nombre original), `blobPathname`, `confianzaOcr`, `procesoId`, `uid` (dueño), `creadoEn`, e **`items`** (lista de `{ descripcion, cantidad, precioUnitario, subtotal }`; van **embebidos** en la factura porque siempre se leen juntos y son pocos; reemplaza a la tabla `items_factura`).
-- `indices_numero/{numero}`: `{ hashArchivo }`. Documento auxiliar que hace único el **número de factura**: se crea en la misma transacción que la factura.
-- `procesos/{procesoId}`: `uid`, `carpeta` (solo el nombre que mostró el navegador), `estado` (`en_cola` | `subiendo` | `ejecutando` | `terminado` | `error`), `totalArchivos`, `inicio`, `fin`, `rutaExcel` (pathname en Blob).
-- `procesos/{procesoId}/archivos/{id}` (la **cola de trabajo**): `blobPathname`, `nombre`, `estado` (`pendiente` | `procesando` | `ok` | `error`), `resultado` (`aceptada` | `revision` | `duplicada` | `error`), `clienteNuevo` (booleano), `intentos`, `error`, y **`disponibleDesde`** (milisegundos de época): `0` mientras espera, `ahora + 5 min` mientras alguien lo procesa (un *arrendamiento* que caduca solo si la función se cae) y `Number.MAX_SAFE_INTEGER` cuando termina. Así la cola se consulta con **un solo campo** (`where("disponibleDesde", "<=", ahora)`) y no hace falta un índice compuesto.
+**Firestore es de documentos, no relacional.** Aquí el diseño parte de qué consultas hacen falta y de cómo garantizar **unicidad** (no hay `UNIQUE`): se usa el valor único como **ID del documento** y se crea dentro de una **transacción**.
 
-Los contadores de avance **no se guardan** en el documento del proceso (un documento tiene un límite de escrituras sostenidas por segundo y se desincroniza si una función se cae): se calculan con consultas de agregación `count()` sobre `archivos` y `facturas`.
+| Colección | ID del documento | Campos principales |
+|---|---|---|
+| `clientes` | el documento (NIT/CC sin puntos ni guion ni DV) → no puede haber dos | `documento`, `dv`, `nombre`, `creadoEn`, `primerProcesoId` |
+| `facturas` | **SHA-256 de la imagen** (existe siempre, aunque el OCR falle) → el mismo archivo nunca se guarda dos veces | `numero`, `fecha` (emisión, `yyyy-mm-dd`), `proveedor`, `nitProveedor`, `clienteDocumento` (`null` si no pasó el DV), `clienteNombre`, `subtotal`, `iva`, `impoconsumo`, `total` (enteros COP), `estado` (`aceptada`\|`revision`), `motivos[]`, `archivo`, `blobPathname`, `confianzaOcr`, `procesoId`, `uid`, `creadoEn`, `items[]` (embebidos: `descripcion`, `cantidad`, `precioUnitario`, `subtotal`) |
+| `indices_numero` | el número de factura (`FE-000123`) | `{ hashArchivo }` — hace único el número; se crea en la misma transacción que la factura |
+| `procesos` (un **lote**) | id automático | `uid`, `carpeta`, `estado` (`subiendo`\|`ejecutando`\|`terminado`), `totalArchivos`, `inicio`, `fin`, `rutaExcel`, `finalizandoDesde`, `metricas` (Fase 8) |
+| `procesos/{id}/archivos` (la **cola de trabajo**) | el nombre del blob | `blobPathname`, `nombre`, `estado`, `resultado` (`aceptada`\|`revision`\|`duplicada`\|`error`), `clienteNuevo`, `clienteExistente`, `hashArchivo`, `intentos`, `error`, **`disponibleDesde`** |
 
-Reglas de seguridad de Firestore: **denegar todo** (`allow read, write: if false;`). Todo el acceso pasa por el servidor. Comprueba en la consola que no queden las reglas del "modo de prueba", que dejan la base abierta y caducan a los 30 días.
+`disponibleDesde` (milisegundos de época) es un **arrendamiento**: `0` mientras espera, `ahora + 5 min` mientras alguien lo procesa (caduca solo si la función se cae) y `Number.MAX_SAFE_INTEGER` cuando termina. Así la cola se consulta con **un solo campo** (`where("disponibleDesde", "<=", ahora)`) y no hace falta un índice compuesto.
 
-Si una consulta pide un índice compuesto, Firestore devuelve un enlace para crearlo en el mensaje de error: explícalo y documéntalo.
+**Reglas de seguridad:** **denegar todo** (`allow read, write: if false;`). Todo el acceso pasa por el servidor. Comprueba que no queden las reglas del "modo de prueba", que dejan la base abierta y caducan a los 30 días.
 
-Verificación: `scripts/probar-conexion.ts` sigue en verde; las colecciones aparecen en la consola de Firebase tras la primera escritura real (Fase 6); una petición REST anónima a Firestore con la `apiKey` pública **es rechazada** (reglas cerradas).
+**Por qué.** El ID de la factura es el hash del archivo porque siempre existe y hace imposible duplicar. El ID del cliente es su documento porque el OCR altera los nombres: **un cliente se identifica por documento, nunca por nombre**. Los ítems van embebidos porque siempre se leen junto con la factura y son pocos.
 
-### Fase A — Autenticación con Firebase (correo y contraseña; antes de la Fase 3)
+**Verificación.** `npx tsx scripts/probar-conexion.ts` sigue en verde. `npx tsx scripts/verificar-reglas.ts` hace peticiones **anónimas** a Firestore (solo con la `apiKey` pública) y debe recibir **403** en lectura y escritura de `clientes`, `facturas` y `procesos`.
 
-- **Cliente** (`src/lib/firebase/cliente.ts`, `/login`): `signInWithEmailAndPassword` de `firebase/auth` con las variables `NEXT_PUBLIC_*`. Sin página de registro.
-- **Sesión en el servidor**: el cliente envía el ID token a `POST /api/sesion`; el servidor llama a `createSessionCookie(idToken, { expiresIn })` y fija una cookie `httpOnly`, `secure`, `sameSite=lax`. `DELETE /api/sesion` la borra (cerrar sesión). Lee la documentación vigente de Next 16 para `cookies()` (es asíncrona).
-- **`exigirUsuario(request)`** verifica la cookie con `verifySessionCookie(cookie, true)` (revocación incluida) y devuelve `uid` y correo, o responde 401. **Todas** las rutas de API la usan (`/api/procesos/*`, `/api/blob/subir`, descargas), y cada proceso, factura y archivo pertenece a un `uid`: un usuario solo ve lo suyo. `proxy.ts` solo hace una comprobación **optimista** (redirige a `/login` si no hay cookie) porque no es el lugar para verificaciones completas; la verificación real está en cada Route Handler.
-- **Quién puede entrar:** la `apiKey` es pública, así que cualquiera podría llamar al registro de Firebase. Crea los usuarios a mano en la consola (Authentication → Usuarios), desactiva el registro libre si la consola lo permite (verifica el ajuste vigente) y, además, `POST /api/sesion` solo acepta correos de una lista `USUARIOS_PERMITIDOS` (variable de entorno, separada por comas).
-- Pruebas: un usuario de prueba creado en la consola; sin cookie, las rutas devuelven 401.
+**Errores típicos.** Una consulta que combina filtros o un filtro con una agregación puede pedir un **índice compuesto**: Firestore devuelve un enlace para crearlo en el mensaje de error (ejemplo: `sum()` filtrado por `procesoId`). Importes como decimales o texto: usa enteros.
 
-Verificación: iniciar sesión con el usuario de prueba, ver la página protegida, cerrar sesión, y comprobar con `curl` que `/api/procesos` responde 401 sin cookie.
+**Pídele a tu IA.** "Explícame con un ejemplo por qué usar el hash como ID del documento impide duplicados, y qué pasaría si dos lotes intentaran crear la misma factura a la vez."
 
-### Fase 3 — Selección y subida de la carpeta a Blob
+---
 
-El navegador no entrega rutas reales del disco, y ahora el servidor ni siquiera está en el computador del usuario. Por eso:
+### Fase A — Autenticación con Firebase (correo y contraseña; antes de subir nada)
 
-- La interfaz usa `<input type="file" webkitdirectory multiple>` para elegir la carpeta. Filtra en el cliente `.png/.jpg/.jpeg` y muestra el conteo ("1000 imágenes encontradas") y el tamaño total. Campo opcional **"procesar solo las primeras N"** para probar rápido con 20–50 facturas.
-- `POST /api/procesos` (exige sesión) crea el documento en `procesos` (estado `subiendo`, con el `uid` del usuario) y devuelve el `id`.
-- `POST /api/blob/subir` es la ruta `handleUpload` que **emite tokens de subida**. Debe validar: que exista un proceso en estado `subiendo`, que la ruta empiece por `procesos/<id>/`, que el tipo sea imagen PNG/JPG y un tamaño máximo razonable. Lee la documentación vigente de `@vercel/blob` para la forma exacta. No dependas de `onUploadCompleted` (no se dispara en local sin túnel): al terminar las subidas, el servidor lista el prefijo con `list()`.
-- El cliente sube con `upload()` de `@vercel/blob/client`, con concurrencia limitada (≈6), barra de progreso y reintentos por archivo.
-- Esto reemplaza al antiguo explorador de carpetas del servidor: **desaparece el riesgo de recorrer el disco del servidor** (explica el cambio de modelo de seguridad), pero aparece otro: cualquiera con la URL podría gastar cuota de Blob, Firestore y CPU. Por eso la Fase A (autenticación) va **antes** de esta fase y las rutas exigen sesión.
+**Objetivo.** Que solo las personas autorizadas usen la aplicación, y que cada lote, factura y archivo pertenezca a un `uid`: un usuario solo ve lo suyo.
 
-Verificación: elegir la carpeta, subir 20 imágenes y ver en el panel de Blob los 20 archivos bajo `procesos/<id>/`.
+**Qué construyes.** `src/lib/firebase/cliente.ts` (Auth en el navegador), `src/lib/auth/sesion.ts` (cookie y `exigirUsuario`), `src/app/api/sesion/route.ts`, `src/app/login/page.tsx`, `src/proxy.ts` y `scripts/crear-usuario.ts`.
+
+**Cómo funciona (flujo).**
+1. **Navegador**: `/login` llama `signInWithEmailAndPassword` de `firebase/auth` (con las variables `NEXT_PUBLIC_*`) y obtiene un **ID token**. No hay página de registro.
+2. El navegador envía el token a `POST /api/sesion`. El servidor: `verifyIdToken` → comprueba que el correo está en `USUARIOS_PERMITIDOS` (si no, **403**) → `createSessionCookie(idToken, { expiresIn: 5 días })` → fija la cookie `sesion` con `httpOnly`, `secure` (solo en producción), `sameSite: "lax"`, `path: "/"`. Después el navegador cierra la sesión de Firebase (`signOut`): **la sesión real vive en la cookie del servidor**.
+3. `DELETE /api/sesion` borra la cookie (cerrar sesión). `GET /api/sesion` devuelve el correo (lo usa el menú).
+4. **`exigirUsuario(request)`** lee la cookie y la verifica con `verifySessionCookie(cookie, true)` (el `true` comprueba revocación) y la lista de correos; devuelve `{ uid, email }` o una respuesta **401**. Se usa así en **todas** las rutas: `const u = await exigirUsuario(request); if (u instanceof Response) return u;`.
+5. **`src/proxy.ts`** (antes `middleware.ts`) hace solo una comprobación **optimista**: si no hay cookie, redirige las páginas a `/login`. La verificación real está en cada Route Handler, porque el proxy no es el lugar para verificaciones completas. Su `matcher` excluye `/login`, `/api`, `_next/static`, `_next/image` y el favicon.
+6. Un lote ajeno responde **404** (no se revela que existe).
+
+**Por qué `USUARIOS_PERMITIDOS` si ya usamos Firebase Auth.** Firebase Auth hace la **autenticación** (¿quién eres?: verifica la contraseña, que jamás está en variables). La lista hace la **autorización** (¿puedes usar esta app?). Se necesita porque la `apiKey` de Firebase es pública y el **registro libre está abierto**: con solo esa clave cualquiera puede crear una cuenta en tu proyecto y obtener un token válido (se comprobó creando y borrando una cuenta). Sin la lista, cualquiera podría gastar tu cuota de Blob, Firestore y CPU. Sin la variable definida, **nadie entra** (falla cerrado). Alternativa: desactivar el registro en la consola de Firebase (puede requerir Identity Platform; verifica el ajuste vigente). El código tolera comillas y espacios alrededor de cada correo.
+
+**Verificación.**
+- Sin cookie: `curl -i http://localhost:3000/api/procesos` → **401**; abrir `/` redirige a `/login`.
+- Login con el usuario de prueba → entra; `GET /api/sesion` devuelve su correo; cerrar sesión → vuelve a dar 401.
+- Un correo que no está en la lista → **403**. Un token inventado → **401**.
+- **Repite estas pruebas contra la URL desplegada** (el siguiente error solo aparece allí).
+
+**Error real de esta fase (solo en Vercel).** `firebase-admin@14.5.0` trae `jwks-rsa@4` → `jose@6`, que es **solo ESM**; en las funciones de Vercel el `require()` de ese módulo falla con `ERR_REQUIRE_ESM` y **todas** las rutas que importan `firebase-admin/auth` responden **500** (en local con Node 24 sí funciona, por eso las pruebas locales pasan). Solución: en `package.json`, `"overrides": { "firebase-admin": { "jwks-rsa": "3.2.2" } }` (esa versión usa `jose@4`, dual CJS/ESM) y `npm install`. Revisa si se puede quitar cuando `firebase-admin` lo corrija.
+
+**Otros errores típicos.** Login correcto pero 403: `USUARIOS_PERMITIDOS` no está definida en ese entorno de Vercel, tiene comillas pegadas, o no hubo Redeploy. La cookie con `secure: true` no se guarda en `http://localhost`: actívala solo cuando `NODE_ENV === "production"`.
+
+**Pídele a tu IA.** "Dibújame el recorrido de un login (navegador → Firebase → servidor → cookie) y dime qué parte verifica cada cosa. Luego implementa solo `exigirUsuario` y úsala en una ruta de prueba."
+
+---
 
 ### Fase 4 — Extractor de datos (lógica pura, con pruebas)
 
-Función pura `extraer(textoOcr): ParcialFactura` y `validar(parcial): string[]` (lista de motivos de revisión). Sin OCR ni base de datos, para poder probarla con texto de ejemplo. Campos: número (`FE-000123`), fecha de **emisión** (tres formatos: `dd/mm/yyyy`, `yyyy-mm-dd`, `12 de marzo de 2026`, normalizada a `yyyy-mm-dd`), proveedor (razón social), NIT del proveedor, **documento y nombre del cliente**, ítems, subtotal (valor antes de IVA), IVA, **impoconsumo** (opcional) y total.
+**Objetivo.** Dos funciones puras, sin OCR ni base de datos (por eso se pueden probar con texto de ejemplo): `extraer(textoOcr): ParcialFactura` y `validar(parcial): string[]` (lista de **motivos de revisión**; vacía = aceptable).
 
-Contexto tributario colombiano que debes entender y explicar al estudiante:
+**Qué construyes.** `src/lib/ocr/nit.ts` (dígito de verificación), `src/lib/ocr/constantes.ts` (tarifas parametrizadas), `src/lib/ocr/tipos.ts`, `src/lib/ocr/extractor.ts`, `src/lib/ocr/validador.ts`, y las pruebas `src/lib/ocr/nit.test.ts` y `src/lib/ocr/extractor.test.ts` con textos reales en `src/lib/ocr/__fixtures__/`.
 
-- Una factura electrónica de venta trae: razón social y NIT con DV del emisor, adquirente (razón social y NIT/CC), número con prefijo, resolución de numeración DIAN, fecha y hora de emisión, forma y medio de pago, ítems, valor antes de IVA, IVA, total y **CUFE** (hash SHA-384 de 96 caracteres hexadecimales).
-- **IVA** general: 19 %. **Impuesto nacional al consumo (INC, "impoconsumo")**: 4 % sobre telefonía móvil, datos e internet móvil; se liquida sobre el valor **sin IVA** y convive con el IVA, así que en esas facturas `total = subtotal + IVA + impoconsumo`. Matiz: para datos/internet móvil la base del 4 % es lo que exceda 1,5 UVT mensuales (concepto DIAN 828 de 2024); el generador lo simplifica aplicando el 4 % a todo el servicio. Verifica las tarifas vigentes con un contador y mantenlas como constantes parametrizadas.
-- La factura trae **otras fechas y cifras largas que no son los campos buscados**: fecha de vencimiento, fecha de la resolución DIAN, número de resolución (14 dígitos), rango de numeración y el CUFE. El extractor debe tomar la fecha de **emisión** y no confundir esas cifras con NIT, número de factura o importes.
-- Las etiquetas varían por diseño: "Valor antes de IVA" / "Subtotal" / "SUBTOTAL" / "Base gravable"; "IVA 19%" / "IVA (19%)" / "IVA 19 %"; "Impoconsumo 4%" / "Impuesto nacional al consumo (4%)" / "Imp. consumo 4 %"; "TOTAL A PAGAR" / "Total factura" / "TOTAL" / "VALOR TOTAL". El NIT aparece con o sin puntos (`900.123.456-7` o `900123456-7`).
+**Primero mira el texto real.** No escribas expresiones regulares "a ojo": corre el OCR sobre unas 10 imágenes de distintos diseños y guarda el texto (`scripts/ocr-muestras.ts <carpetaImagenes> <carpetaTxt>` en el repositorio de referencia). Ese texto —con sus errores— es tu material de trabajo y tus fixtures de prueba.
 
-Lecciones de la prueba previa que **debes** incorporar:
+**Contexto tributario colombiano (entiéndelo, no lo memorices).**
+- Una factura electrónica trae: razón social y NIT con dígito de verificación (DV) del emisor, adquirente (razón social y NIT/CC), número con prefijo (`FE-000123`), resolución de numeración DIAN, fecha y hora de emisión, forma y medio de pago, ítems, valor antes de IVA, IVA, total y **CUFE** (hash de 96 caracteres hexadecimales).
+- **IVA** general: 19 %. **Impuesto nacional al consumo (INC, "impoconsumo")**: 4 % sobre telefonía móvil, datos e internet móvil; se liquida sobre el valor **sin IVA** y convive con el IVA, así que en esas facturas **`total = subtotal + IVA + impoconsumo`**. (Matiz: para datos móviles la base real es lo que exceda 1,5 UVT mensuales; el generador lo simplifica aplicando 4 % a todo el servicio. Verifica tarifas con un contador y déjalas como constantes.)
+- La factura trae **otras fechas y cifras largas que NO son lo buscado**: fecha de vencimiento, fecha de la resolución DIAN, número de resolución (14 dígitos), rango de numeración (`FE-000001 al FE-050000`) y el CUFE. Hay que tomar la fecha de **emisión** y no confundir esas cifras con el NIT, el número de factura o los importes.
+- Las etiquetas varían por diseño: "Valor antes de IVA" / "Subtotal" / "Base gravable"; "IVA 19%" / "IVA (19%)"; "Impoconsumo 4%" / "Impuesto nacional al consumo (4%)" / "Imp. consumo 4 %"; "TOTAL A PAGAR" / "Total factura" / "VALOR TOTAL" / "TOTAL". El NIT aparece con o sin puntos (`900.123.456-7` o `900123456-7`).
+- **Dígito de verificación del NIT** (algoritmo DIAN): pesos `3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71` aplicados a los dígitos **de derecha a izquierda**; `r = suma mod 11`; `dv = r > 1 ? 11 − r : r`. Casos comprobados: 890903938 → 8, 860034313 → 7, 899999068 → 1. Detecta cerca del 98 % de los errores de un dígito, **no todos**: no lo presentes como garantía.
 
-- Normaliza el texto del OCR antes de interpretar: `$496 .000` → `$496.000`; `3$146.500` → `3 $146.500`; cantidad y precio pegados (`119426.500$4.691.500` → `11 $426.500 $4.691.500`).
-- Los importes usan punto de miles (`$1.234.567`), sin decimales.
-- Una descripción puede **partirse en dos líneas**, y la parte sin cifras puede venir **antes o después** de la línea con los importes.
-- El proveedor puede aparecer en la misma línea que la palabra `FACTURA`: corta en `S.A.S.`.
-- Cuidado con falsos positivos de palabras (por ejemplo, "Mo**nit**or" contiene "nit"): usa límites de palabra (`\b`).
-- **Reparación por redundancia aritmética**: si `cantidad × precio ≠ subtotal` pero `subtotal / precio` es un entero pequeño, el OCR leyó mal la cantidad; corrígela.
-- Validaciones de negocio: ítems suman el subtotal; `cantidad × precio = subtotal`; IVA = 19 % del subtotal (tolerancia de $1); si hay impoconsumo, = 4 % del subtotal (tolerancia de $1); `subtotal + IVA + impoconsumo = total`; campos obligatorios presentes. Si el texto menciona "impoconsumo"/"consumo" pero no se pudo leer su valor, es motivo de revisión.
-- **Dígito de verificación del NIT** (algoritmo de la DIAN): se aplican los pesos `3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71` a los dígitos desde la derecha; `r = suma mod 11`; `dv = r > 1 ? 11 − r : r`. Comprobado: 890903938 → 8, 860034313 → 7, 899999068 → 1. Úsalo para **validar el documento del cliente y el NIT del proveedor**. Detecta cerca del 98 % de los errores de un dígito, no todos: no lo presentes como garantía.
-- **El cliente se identifica por documento, nunca por nombre** (el OCR altera los nombres). Si el documento no pasa el dígito de verificación, la factura queda en `revision` y **no se crea ningún cliente**.
+**Qué devuelve `extraer` (`ParcialFactura`).** `numero`, `fecha` (emisión, `yyyy-mm-dd`), `proveedor`, `nitProveedor` + `dvProveedor`, `clienteDocumento` + `clienteDv` + `clienteNombre`, `items[]`, `subtotal`, `iva`, `impoconsumo` (`null` si no hay línea legible), `mencionaImpoconsumo` y `total`. Todo lo que no se encuentre queda en `null`: **nunca se inventa un valor**.
 
-Pruebas con Vitest usando como casos reales los errores de arriba (texto de ejemplo con cada defecto) y casos válidos de cada diseño de factura.
+**Cómo se extrae cada campo.**
+1. **Normalizar el texto** del OCR antes de interpretarlo: `$496 .000` → `$496.000`; `3$146.500` → `3 $146.500`; `S146.500` (la S es un `$` mal leído) → `$146.500`; cantidad, precio y subtotal pegados (`119426.500$4.691.500` → `11 $426.500 $4.691.500`, **solo si** cantidad × precio = subtotal). Elimina las líneas vacías.
+2. **Importes**: punto de miles (`$1.234.567`), sin decimales; antes de leer una línea se quitan los porcentajes (`19%`) para que no se confundan con importes.
+3. **Fecha de emisión**: reconoce `dd/mm/yyyy`, `yyyy-mm-dd` y `12 de marzo de 2026`, las valida como fechas reales y **descarta** las precedidas de vencimiento / límite / resolución / autorización / rango. La que va junto a "Emisión", "expedición" o "Fecha" gana.
+4. **Número de factura**: patrón `FE-000123`, ignorando las líneas de rango, resolución o autorización.
+5. **Documentos (NIT/CC)**: patrón con o sin puntos y con DV. El primero del texto es el del proveedor; el del cliente es el que tiene una etiqueta (Cliente / Adquirente / Señores / Documento / NIT/CC) en esa línea **o en las dos anteriores** (el nombre del cliente puede partirse en dos líneas). Si el OCR perdió el guion (`8376231879`), solo se acepta si el último dígito **es** un DV válido del número anterior.
+6. **Razón social del proveedor**: la(s) línea(s) justo antes de la del NIT. Se quita el título ("FACTURA ELECTRÓNICA DE VENTA", que a veces comparte línea o se parte en dos) y se corta en el sufijo (`S.A.S.`, `S.A.`, `Ltda.`, `E.U.`). Si tras cortar solo queda el sufijo, la razón social estaba **partida en dos líneas** y se antepone la línea anterior.
+7. **Ítems**: las líneas con importes antes de la primera línea de totales. La cantidad puede estar pegada al primer importe (`… 2 $116.500`, `20 x $22.700`) o al inicio de la línea; se elige el candidato que cumple cantidad × precio = subtotal. La descripción puede **partirse en dos líneas** y la parte sin cifras puede venir **antes o después** de la línea con los importes. Se descartan líneas de dirección (`Cra 115 $ 48-7`) exigiendo palabras de dirección ausentes y precio ≥ 100.
+8. **Totales**: se buscan a partir de la primera línea de subtotal (valor antes de IVA / subtotal / base gravable); el IVA en una línea que **empieza** por "IVA" (no "Responsable de IVA"); el impoconsumo en su línea; el total en la última línea "total". **Reparación por redundancia aritmética**: si cantidad × precio ≠ subtotal pero subtotal / precio es un entero pequeño, el OCR leyó mal la cantidad: se corrige.
 
-Verificación: `npm test` pasa; las pruebas incluyen al menos un caso por cada lección anterior.
+**Reglas de `validar`** (cada incumplimiento es un motivo): campos obligatorios presentes (número, fecha, proveedor, NIT del proveedor, documento del cliente, subtotal, IVA, total, al menos un ítem); razón social legible (mínimo 6 letras); DV válido del NIT del proveedor y del documento del cliente; cantidad × precio = subtotal de cada ítem; los ítems suman el subtotal; IVA = 19 % del subtotal (tolerancia de $1); si hay impoconsumo, = 4 % del subtotal (tolerancia de $1); subtotal + IVA + impoconsumo = total; si el texto menciona impoconsumo y no se pudo leer su valor y el total no cuadra sin él, es motivo de revisión. **El cliente se identifica por documento, nunca por nombre** (el OCR altera los nombres): si el documento no pasa el DV, la factura queda en revisión y **no se crea ningún cliente**.
+
+**Lecciones reales que debe cubrir al menos una prueba cada una** (todas salieron de errores verdaderos):
+- Falsos positivos de palabras: "Mo**nit**or" contiene "nit" (usa límites de palabra, `\b`); "**Imp**resora" empieza por "imp" y se tomó por la etiqueta de impoconsumo; "Responsable de **IVA**" se tomó por la línea del IVA.
+- Etiquetas pegadas por el OCR: `IVA19%` (sin espacio) y `Imp. consumo 4 %`.
+- La razón social partida en dos líneas, con el título de la factura intercalado (`…FACTURA ELECTRÓNICA DE` / `S.A.S. VENTA`).
+- Las fechas y cifras largas que no son lo buscado (vencimiento, resolución, rango, CUFE).
+- Una dirección leída como ítem.
+- Una cantidad mal leída que la aritmética puede reparar.
+
+**Cómo probar sin respuestas correctas.** Con vitest: casos con texto real de cada diseño y un caso por cada lección. Para medir de verdad necesitas el `verdad.json` de un conjunto (lo tiene el profesor; `scripts/leer-carpeta.ts <carpeta> <verdad.json>` en el repositorio de referencia compara campo por campo). Sin él, mide el **porcentaje de aceptadas** y revisa a mano 20 facturas aceptadas.
+
+**Verificación.** `npm test` pasa. Referencia (repositorio de referencia, 56 pruebas): 10/10, 39/40 y 56/60 aceptadas en conjuntos de desarrollo distintos y **915/1000 (92 %) en el conjunto del curso**, con entre 0 y 3 errores sin detectar por conjunto (un dígito mal leído en el número de factura, por ejemplo, que la aritmética no puede ver).
+
+**Errores típicos.** Ajustar el extractor a tus 10 facturas de desarrollo y creer que ya está (con 40 facturas el extractor aceptaba el 98 %, pero con otras 60 de otra semilla bajó al 82 % hasta arreglar un patrón que no se había visto —la razón social partida con el título—, y subió a 93 %: **mide siempre con facturas que no usaste para desarrollar**); arreglar la prueba en vez del código; expresiones regulares ilegibles sin comentarios.
+
+**Pídele a tu IA.** "Muéstrame 3 textos reales de OCR de diseños distintos antes de escribir ninguna expresión regular. Escribe primero la prueba que falla y después el código mínimo que la hace pasar."
+
+---
 
 ### Fase 5 — OCR dentro de una función de Vercel
 
-- `src/lib/ocr/motor.ts`: crea el worker de tesseract.js con idioma `spa` desde `@tesseract.js-data/spa/4.0.0_best_int` (comprueba la ruta real instalada), `langPath` local, `cachePath` en `/tmp` y **sin descargas de red**. Lo reutiliza entre invocaciones (`globalThis`). Expone `leerImagen(buffer, modo): { texto, confianza }`. La imagen se obtiene de Blob (descarga en memoria con el SDK), no del disco.
-- `modo = "preprocesado"` (reintento): con `sharp`, escala de grises, `normalize`, ampliación 1,5× y `sharpen`. Un segundo reintento sobre la franja superior (30 %) **invertida** recupera encabezados de texto blanco sobre fondo de color (proveedor y NIT).
-- Estrategia: leer la imagen original; si `validar` devuelve motivos, reintentar en modo preprocesado y quedarse con el resultado que tenga menos motivos. Lo que siga fallando queda en `revision`.
-- Presupuesto de tiempo: cada lote comprueba el tiempo transcurrido y deja de reclamar más imágenes cuando se acerca a un margen seguro de `maxDuration` (configura `export const maxDuration` en la ruta).
+**Objetivo.** Leer imágenes con OCR **dentro de una función desplegada** (no solo en tu computador), con una estrategia de reintentos y sin que una falla cuelgue la función.
 
-Verificación: una ruta o script de prueba procesa 20 facturas **ya subidas a Blob**, ejecutándose **en el despliegue de Vercel (preview)** y no solo en local; imprime el tiempo total, el tiempo por imagen, el arranque en frío y los campos extraídos. Si solo funciona en local, la fase no está terminada.
+**Qué construyes.** `src/lib/ocr/motor.ts`, `src/lib/ocr/leer-factura.ts` y la configuración de empaquetado en `next.config.ts`.
 
-### Fase 6 — Procesamiento por lotes, guardado en base de datos y avance
+**Pasos.**
+1. **Motor** (`motor.ts`): crea **un** worker de `tesseract.js` con idioma `spa` (`createWorker("spa", 1, { langPath, gzip: true, cachePath: os.tmpdir(), cacheMethod: "none" })`). `langPath` apunta a `node_modules/@tesseract.js-data/spa/4.0.0_best_int` (comprueba la ruta real instalada) para que **no haya descargas de red**; los archivos son `.traineddata.gz`, de ahí `gzip: true`; el único sitio escribible en Vercel es `/tmp`. El worker se guarda en `globalThis` para **reutilizarlo entre invocaciones** de la misma instancia caliente. Expone `leerImagen(buffer, modo): { texto, confianza }`. La imagen llega como `Buffer` descargado de Blob, nunca del disco.
+2. **Tres modos** de lectura: `original`; `preprocesado` (con `sharp`: respetar la orientación EXIF, escala de grises, `normalize`, ampliar 1,5× y `sharpen`); y `encabezado` (franja superior del 30 % **invertida**, que recupera texto blanco sobre fondo de color: proveedor y NIT de uno de los diseños).
+3. **Estrategia** (`leer-factura.ts`): leer el original → extraer → validar; si hay motivos, reintentar en modo preprocesado y quedarse con el resultado que tenga **menos motivos**; si siguen, leer el encabezado y **anteponer** su texto al mejor texto, y volver a elegir. Lo que siga fallando queda en revisión.
+4. **Topes de tiempo** (60 s al arrancar el worker y 60 s por lectura): el worker corre en un hilo aparte; si no puede cargar un archivo, **el hilo muere en silencio y la promesa nunca se resuelve**. Sin tope, la función se cuelga hasta agotar el tiempo (504). Con tope falla con un mensaje claro, se descarta el worker (el siguiente intento arranca uno nuevo) y el lote lo reintenta.
+5. **Empaquetado** en `next.config.ts`: tesseract carga con `require` dinámico el núcleo WASM y varias dependencias, y los datos del idioma con una ruta calculada; el trazador de archivos de Next **no los ve** y no entran a la función. Hay que incluirlos con `outputFileTracingIncludes` en las rutas que hacen OCR (`/api/procesos/**`): `node_modules/@tesseract.js-data/spa/4.0.0_best_int/**/*`, `node_modules/tesseract.js/**/*`, **todo** `node_modules/tesseract.js-core/**/*` (el núcleo que elige el worker depende de la CPU: `relaxedsimd`, `simd` o base, con o sin `lstm`; excluir variantes dio `Cannot find module`) y las dependencias `bmp-js`, `idb-keyval`, `is-url`, `node-fetch`, `regenerator-runtime`, `wasm-feature-detect`, `zlibjs`, `whatwg-url`, `tr46`, `webidl-conversions`. El paquete de la función queda en unos 113 MB (límite: 250 MB sin comprimir).
+6. **Simular el empaquetado en local**: `output: "standalone"` copia **solo** los archivos trazados. El repositorio de referencia lo activa con la variable `NEXT_STANDALONE=1` (`NEXT_STANDALONE=1 npm run build` y luego `node .next/standalone/server.js` con tu `.env` copiado dentro). Sirve para detectar archivos que faltan, pero **no detecta todo** (en local se eligió otra variante del núcleo que en Vercel): la prueba definitiva es el despliegue.
 
-El estado vive en Firestore, no en memoria. Todas las rutas exigen sesión y comprueban que el proceso es del usuario. Flujo:
+**Por qué.** `tesseract.js` ya usa hilos internamente; con 1 vCPU un pool propio no acelera nada, el paralelismo lo da el motor del navegador (Fase 8). El reintento con imagen preprocesada y con el encabezado invertido es lo que sube la tasa de facturas aceptadas.
 
-1. `POST /api/procesos/[id]/iniciar`: lista el prefijo `procesos/<id>/` en Blob, crea un documento en `procesos/<id>/archivos` por imagen (estado `pendiente`, `disponibleDesde: 0`; el ID del documento sale de la ruta del blob, así que repetir la llamada no duplica), fija `totalArchivos` (respetando `limite`) y pasa el proceso a `ejecutando`. Responde de inmediato. (Un lote de escritura admite 500 operaciones: usa `BulkWriter` o varios lotes para 1000 archivos.)
-2. `POST /api/procesos/[id]/lote`: **reclama** hasta N archivos dentro de **una transacción de Firestore**: lee `archivos` con `where("disponibleDesde", "<=", ahora).orderBy("disponibleDesde").limit(N)` y, para cada uno, actualiza `estado: "procesando"`, `intentos + 1` y `disponibleDesde: ahora + 5 min`. Dos invocaciones concurrentes nunca toman el mismo archivo (la transacción se reintenta si hay conflicto) y los que quedaron "procesando" por una función caída vuelven a estar disponibles cuando caduca el arrendamiento. Procesa cada archivo (OCR → extraer → validar) y lo guarda. Responde con el avance.
-3. El **cliente** (la página) ejecuta un bucle con 3–4 llamadas a `/lote` concurrentes hasta que no quedan pendientes. Si el usuario cierra la pestaña, al volver a abrir el proceso el bucle **continúa** donde quedó (todo es idempotente). Cron/Vercel Workflow quedan como mejora opcional para no depender del navegador abierto.
-4. `GET /api/procesos/[id]` devuelve el avance calculado con `count()` (procesados / total, aceptadas, en revisión, duplicadas, clientes nuevos y existentes, tiempo). La página consulta cada segundo. SSE es una mejora opcional.
-5. Cuando no quedan archivos pendientes ni en proceso, `POST /api/procesos/[id]/finalizar` (idempotente) cierra el proceso y dispara la Fase 7.
+**Verificación.** Procesar **20 facturas ya subidas a Blob ejecutándose en el despliegue de Vercel (no solo en local)** e imprimir tiempo total, tiempo por imagen y los campos extraídos. Si solo funciona en local, la fase **no** está terminada. (En el repositorio de referencia esta verificación se hace con `scripts/probar-http.ts` una vez construidas las Fases 3 y 6; si quieres verificar antes, escribe una ruta temporal protegida con sesión y bórrala al terminar.) Referencia medida en Vercel Hobby: unos **1,5 s por factura** en promedio con 3 lotes concurrentes; el primer lote tras un arranque en frío tardó ~9 s.
 
-Por cada factura, en **una transacción de Firestore** (todas las lecturas van **antes** de las escrituras): lee `facturas/{hashArchivo}` y `indices_numero/{numero}`; si alguno existe, **omite** y marca el archivo como `duplicada`; si el documento del cliente pasa el dígito de verificación, lee `clientes/{documento}` y lo **crea solo si no existe** (nunca sobrescribas el nombre de un cliente existente; `clienteNuevo` indica cuál fue el caso); crea la factura (con sus ítems embebidos) y el índice del número; marca el archivo como `ok`. Como el ID del cliente es su documento, es **imposible** que existan dos clientes con el mismo documento, aunque dos lotes concurrentes lo intenten a la vez.
+**Errores reales de esta fase (solo en Vercel).**
+- `/lote` responde **504 `FUNCTION_INVOCATION_TIMEOUT`**: el worker no encontraba `tesseract.js-core` (no estaba en el paquete) y se colgó.
+- `Cannot find module 'tesseract.js-core/tesseract-core-relaxedsimd'`: se había incluido solo la variante `lstm`.
+- Faltan los datos de idioma: tesseract intentaría descargarlos de internet.
 
-Un error en una imagen **no detiene el lote**: se registra en `archivos.error`, se reintenta hasta un máximo de intentos y, si sigue fallando, la factura queda en `revision` con el motivo.
+**Pídele a tu IA.** "Explícame por qué el worker puede quedarse colgado sin dar error, qué hace `outputFileTracingIncludes` y cómo puedo comprobar qué archivos entraron al paquete de la función."
 
-Verificación: procesar 50 facturas dos veces (subiéndolas dos veces) deja el mismo conteo en `facturas` y `clientes`; forzar el corte de una invocación a mitad de lote y reanudar no duplica nada.
+---
+
+### Fase 3 — Selección y subida de la carpeta a Blob
+
+**Objetivo.** Elegir una carpeta con miles de imágenes en el navegador y subirla a Blob **sin pasar por nuestra API** y sin que la página se bloquee.
+
+**Qué construyes.** `src/lib/rutas.ts` (nombres de archivo, usable en servidor y navegador), `src/app/api/blob/subir/route.ts` (emite tokens), `POST /api/procesos` en `src/app/api/procesos/route.ts` (crea el lote) y la parte de subida de `src/componentes/NuevoProceso.tsx`.
+
+**Pasos.**
+1. **Elegir la carpeta**: `<input type="file" webkitdirectory multiple>` (el navegador no entrega rutas reales del disco). TypeScript no conoce `webkitdirectory`: usa un `@ts-expect-error` comentado. Un `<input type="file">` sin estilo es solo texto; envuélvelo en una `<label>` con apariencia de botón y deja el input con `sr-only`. Ofrece también "Elegir archivos" (algunos navegadores móviles no soportan carpetas). Filtra en el cliente `.png/.jpg/.jpeg` y muestra el conteo y el tamaño.
+2. **Lotes**: divide la selección en trozos (por defecto 100). Cada trozo es un lote: `POST /api/procesos` crea un documento en `procesos` (estado `subiendo`, con el `uid`) y devuelve el `id`.
+3. **Subida directa**: `upload()` de `@vercel/blob/client` con `access: "private"` y `handleUploadUrl: "/api/blob/subir"`. La ruta de cada archivo es `procesos/<id>/<NNNN>-<nombre limpio>` (índice con ceros + nombre sin tildes ni caracteres raros): es único dentro del lote.
+4. **Ruta `handleUpload`** (`/api/blob/subir`): exige sesión; atiende **solo** el evento `blob.generate-client-token`; valida que el proceso exista, sea del usuario y esté en estado `subiendo`, que la ruta cumpla `^procesos/<id>/[^/]+$` y termine en imagen, tipos `image/png` e `image/jpeg`, tamaño máximo 8 MB; `allowOverwrite: true` para poder reintentar. **No dependas de `onUploadCompleted`**: no se dispara en local sin túnel; al terminar, el servidor lista el prefijo con `list()` (Fase 6).
+5. **Concurrencia 6 y reintentos**: seis subidas a la vez, hasta 3 intentos por archivo con espera creciente. **Un archivo que falla no detiene el resto**: se guarda en una lista para "Reintentar esos archivos". Sin esto, 1000 subidas se abortan por una sola falla.
+
+**Por qué.** El cuerpo de una petición a una función no pasa de 4,5 MB, así que las imágenes van del navegador directo a Blob con un **token de un solo uso** que solo nuestro servidor puede emitir (y solo tras validar). Esto reemplaza al "explorador de carpetas del servidor" y elimina el riesgo de recorrer su disco, pero crea otro (gasto de cuota), y por eso la autenticación va antes.
+
+**Verificación.** Elegir la carpeta, subir 20 imágenes y ver en el panel de Blob los 20 archivos bajo `procesos/<id>/`. Además, el servidor debe **rechazar** una ruta fuera del lote (`procesos/otro/0001-x.png`), un archivo `.html` y cualquier petición sin sesión. Referencia: 1000 imágenes (108 MB) subieron en 89 s y el navegador no se bloqueó (retraso máximo del bucle de eventos de 2 ms).
+
+**Errores típicos.** Botón de archivos invisible (input sin estilo); `Cannot find module` al ejecutar un script que importa `@vercel/blob` desde fuera del proyecto; esperar el aviso `upload-completed`.
+
+**Pídele a tu IA.** "Muéstrame qué validaciones hace `onBeforeGenerateToken` y qué ataque evita cada una (por ejemplo, subir a la carpeta de otro usuario)."
+
+---
+
+### Fase 6 — Procesamiento por lotes, guardado en la base de datos e idempotencia
+
+**Objetivo.** Procesar miles de imágenes con funciones de corta vida, de forma que **repetir cualquier paso, o que una función se caiga a mitad, no duplique ni pierda nada**. El estado vive en Firestore, no en memoria.
+
+**Qué construyes.** `src/lib/procesamiento/iniciar.ts`, `cola.ts`, `lote.ts`, `guardar.ts`, `finalizar.ts`, `proceso.ts`, y las rutas `src/app/api/procesos/[id]/iniciar/route.ts`, `src/app/api/procesos/[id]/lote/route.ts`, `src/app/api/procesos/[id]/finalizar/route.ts` y `src/app/api/procesos/[id]/route.ts`. Todas exigen sesión **y** comprueban que el lote es del usuario.
+
+**Flujo.**
+1. **`iniciar`** (`maxDuration` 60): lista con `list()` el prefijo `procesos/<id>/` de Blob (paginando de a 1000, solo imágenes), crea un documento en la cola por imagen con `BulkWriter` (un lote de escritura admite 500 operaciones) y pasa el lote a `ejecutando`. El **ID del documento sale del nombre del blob** y se usa `create()`: repetir la llamada no duplica (los que ya existen se ignoran). Responde de inmediato.
+2. **`lote`** (`maxDuration` 300): **reclama** hasta 4 archivos dentro de **una transacción**: lee la cola con `where("disponibleDesde", "<=", ahora).orderBy("disponibleDesde").limit(4)` y a cada uno le pone `estado: "procesando"`, `intentos + 1` y `disponibleDesde: ahora + 5 min` (el arrendamiento). Dos invocaciones concurrentes nunca toman el mismo archivo (la transacción se reintenta si hay conflicto) y los que quedaron "procesando" por una función caída vuelven a estar disponibles cuando caduca el arrendamiento. Luego procesa cada archivo **en serie** y responde con un resumen (`reclamados`, `aceptadas`, `revision`, `duplicadas`, `errores`, tiempos).
+3. **Presupuesto de tiempo**: antes de cada archivo el lote comprueba el tiempo transcurrido; pasados **200 s** (de los 300 máximos) **devuelve** los archivos que faltan a la cola sin contarlos como intento.
+4. **Cada archivo**: descargar de Blob → **SHA-256 de la imagen** → **atajo previo al OCR**: si `facturas/{hash}` ya existe (1 lectura), se marca `duplicada` **sin gastar CPU** (reprocesar la misma carpeta pasa de minutos a segundos) → OCR + extraer + validar (Fase 5) → guardar.
+5. **Guardar** (`guardarFactura`), en **una transacción** con **todas las lecturas antes de las escrituras** (regla de Firestore):
+   - Lee `facturas/{hash}`, `indices_numero/{numero}` y, si el documento del cliente pasa el dígito de verificación, `clientes/{documento}`.
+   - Si la factura ya existe → archivo `duplicada`, nada más.
+   - Si el **número** ya existe pero el archivo es distinto (otro hash), **no se descarta**: se guarda en `revision` con el motivo "El número FE-… ya existe en otra factura" y sin crear el índice (podría ser un número mal leído; descartarla perdería una factura). Solo el mismo hash es duplicada.
+   - El cliente se crea **solo si no existe** y nunca se sobrescribe su nombre. Si el documento no pasa el DV, `clienteDocumento` queda en `null`, la factura va a revisión y **no se crea cliente**.
+   - Crea la factura (con ítems embebidos) y el índice del número, y marca el archivo `ok` con su `resultado` y `hashArchivo`.
+   - Como el ID del cliente es su documento, es **imposible** que existan dos clientes iguales, aunque dos lotes concurrentes lo intenten a la vez.
+6. **Errores**: un error en una imagen **no detiene el lote**: se registra en `archivos.error`; se reintenta hasta 3 intentos (vuelve a la cola) y, si sigue fallando, `guardarFallo` deja la factura en `revision` con el motivo y el archivo en `error`.
+7. **`finalizar`** (`maxDuration` 300, idempotente): si queda algún archivo sin terminar (cuenta con `count()` los `disponibleDesde < MAX_SAFE_INTEGER`) responde `listo: false`. Si no, **toma el cierre** en una transacción (`finalizandoDesde`, bloqueo de 2 min, para que solo un cliente genere el Excel), genera el Excel (Fase 7), lo sube a Blob y pasa el lote a `terminado`.
+
+**Quién llama a `lote`**: el **cliente**, con 3 llamadas concurrentes (cada una es otra instancia de la función). En la Fase 8 eso se convierte en el *Motor*; para verificar esta fase basta un script que haga lo mismo.
+
+**Por qué.** Sin proceso de larga vida, la **idempotencia** es lo que hace seguro reintentar: IDs deterministas (nombre del blob, hash, documento, número) + transacciones + arrendamientos con caducidad. La "cola" en Firestore sustituye a un gestor de trabajos en memoria.
+
+**Cuota (estimado por factura)**: ~5 lecturas (reclamo, atajo por hash, factura, índice, cliente) y ~6 escrituras (alta en la cola, reclamo, factura, índice, cliente nuevo, cierre del archivo), más 1 actualización de las métricas del lote (Fase 8). **Mil facturas ≈ 5 000 lecturas y 6 000 escrituras.** Reprocesar la misma carpeta vuelve a gastar lecturas (el hash evita duplicar datos, no consumo).
+
+**Verificación** (referencia: `scripts/probar-pipeline.ts`, contra Firestore y Blob reales): sube 10 imágenes a Blob, inicia, procesa con 3 lotes concurrentes, finaliza y comprueba: 10 facturas, 9 clientes (los distintos que había), suma del Excel igual a `sum()` de Firestore igual a la verdad; después **repite con las mismas imágenes en otra ruta de Blob**: 10 de 10 duplicadas y los conteos de `facturas` y `clientes` no cambian. Procesar 50 facturas dos veces deja el mismo conteo; cortar una invocación a mitad de lote y reanudar (esperando a que caduque el arrendamiento) no duplica nada. El script **limpia solo lo que creó**.
+
+**Errores típicos.** Una lectura después de una escritura dentro de la transacción (Firestore lo rechaza); olvidar que `create()` falla si el documento existe (es lo que da la idempotencia: hay que ignorar ese error en `iniciar`); un `sum()` filtrado por `procesoId` pide un índice compuesto (Firestore da el enlace para crearlo).
+
+**Pídele a tu IA.** "Simula dos invocaciones concurrentes de `lote` y dime qué pasa paso a paso con la transacción de reclamo. Después simula que una función se cae a mitad: ¿cuándo y cómo se reprocesa ese archivo?"
+
+---
 
 ### Fase 7 — Excel en Blob
 
-Al finalizar el proceso, genera con `exceljs` **a partir de la base de datos** (no de la memoria) un archivo en memoria y súbelo a Blob en `procesos/<id>/resultado_AAAA-MM-DD_HHmm.xlsx` (hora de Colombia, con fecha y hora para no pisar ejecuciones anteriores):
+**Objetivo.** Al finalizar el lote, generar un Excel **a partir de la base de datos** (no de la memoria) y dejarlo descargable.
 
-- Hojas:
-  - **Facturas**: archivo, número, fecha, proveedor, NIT proveedor, documento cliente, cliente, subtotal (valor antes de IVA), IVA, impoconsumo, total, estado, motivos, confianza OCR.
-  - **Ítems**: número de factura, descripción, cantidad, precio unitario, subtotal.
-  - **Clientes**: documento, nombre, número de facturas, total comprado.
-  - **Resumen**: total de archivos, aceptadas, en revisión, clientes nuevos y existentes, duración.
-- Importes como **números** con formato `"$"#,##0`; fechas como fechas; encabezados con filtro automático y fila fija.
-- Guarda el pathname en `procesos.ruta_excel`. Como el store es privado, expón `GET /api/procesos/[id]/excel`, que lee el blob con el SDK y lo devuelve como descarga. La interfaz muestra "Excel disponible: descargar".
-- Cuida memoria y tiempo con 1000 filas (modo normal de `exceljs` es suficiente; no necesitas *streaming* a este tamaño, pero compruébalo).
+**Qué construyes.** `src/lib/excel/generar.ts`, el paso final de `src/lib/procesamiento/finalizar.ts` y `src/app/api/procesos/[id]/excel/route.ts`.
 
-Verificación: descargar el Excel desde la interfaz; la suma de la columna `total` coincide con la agregación `sum()` de Firestore sobre `facturas`.
+**Pasos.**
+1. Lee la cola del lote → los `hashArchivo` distintos → `getAll` de esas facturas (incluye las "duplicadas" de reprocesos, así el Excel de un reproceso no sale vacío) → `getAll` de los clientes de esas facturas.
+2. Hojas: **Facturas** (archivo, número, fecha, proveedor, NIT proveedor, documento cliente, cliente, valor antes de IVA, IVA, impoconsumo, total, estado, motivos, confianza OCR), **Ítems** (número de factura, descripción, cantidad, precio unitario, subtotal), **Clientes** (documento, nombre, número de facturas, total comprado) y **Resumen** (carpeta, total de archivos, aceptadas, en revisión, duplicadas, con error, clientes nuevos y existentes, duración).
+3. Importes como **números** con formato `"$"#,##0` (nunca texto); fechas como **fechas** reales con formato `yyyy-mm-dd`; encabezados en negrita con filtro automático y fila fija.
+4. Se genera en memoria (`Buffer`) y se sube a Blob en `procesos/<id>/resultado_AAAA-MM-DD_HHmm.xlsx` con la **hora de Colombia** (`America/Bogota`), así no se pisan ejecuciones anteriores. El pathname se guarda en `procesos.rutaExcel`.
+5. El store es privado: `GET /api/procesos/[id]/excel` lee el blob con el SDK y lo devuelve como descarga (`content-disposition: attachment`).
 
-### Fase 8 — Interfaz y verificación final
+**Por qué.** Generarlo desde la base garantiza que el Excel muestra lo guardado. Con 1000 filas el modo normal de `exceljs` basta; no hace falta *streaming*.
 
-- Página principal: estado de las conexiones (Firestore, Auth y Blob) y del usuario con sesión iniciada, selector de carpeta, botón **Procesar**, barras de subida y de procesamiento.
-- Página de resultados: tabla de facturas con filtro por `estado`, enlace al Excel y a la imagen original (servida por una ruta nuestra desde el Blob privado).
-- Opcional (mejora): **cola de revisión manual**, donde el usuario corrige una factura en `revision` y la aprueba.
-- `npm run verificar -- <ruta de verdad.json>`: compara la base de datos con el archivo de respuestas correctas (si el profesor lo entrega) e imprime: facturas y clientes en base de datos, exactitud por campo, aceptadas con error no detectado, **clientes que no existen en la verdad** (deben ser 0) y si se cumplen 1000 facturas / 850 clientes.
+**Verificación.** Descargar el Excel desde la interfaz; la **suma de la columna Total coincide con la agregación `sum()` de Firestore** sobre `facturas`. (Un `sum()` filtrado por lote pide un índice compuesto; el script de referencia suma sobre toda la colección, válido cuando solo están los datos de la prueba.) Las celdas de importes deben ser numéricas.
 
-Verificación final **en la URL de producción de Vercel** con la carpeta completa: 1000 facturas, 850 clientes, Excel generado y descargable, reprocesar no duplica.
+**Errores típicos.** Importes guardados como texto; fechas con zona horaria equivocada; olvidar que el Excel de un reproceso debe incluir las duplicadas.
+
+**Pídele a tu IA.** "Abre el Excel generado y dime cómo comprobar, desde código, que las celdas de importes son números y no texto."
+
+---
+
+### Fase 8 — Interfaz: lotes, motor en segundo plano, métricas y borrado
+
+**Objetivo.** Una interfaz con menú superior **«Procesar facturas» / «Métricas»**; subida por **lotes** que sigue procesando en segundo plano mientras subes el siguiente o cambias de pestaña; cifras en vivo (antes de IVA, IVA, impoconsumo y total) durante la carga; un panel de métricas por lote y en total; y un botón para borrar los datos de prueba.
+
+**Qué construyes.** En `src/componentes/`: `Cascaron.tsx`, `MenuSuperior.tsx`, `Motor.tsx`, `NuevoProceso.tsx`, `ResumenEnVivo.tsx`, `ListaProcesos.tsx`, `VistaProceso.tsx`, `PanelMetricas.tsx`, `BorrarTodo.tsx`, `ui.tsx`, `useMetricas.ts`, `formato.ts`. En `src/lib/procesamiento/`: `metricas.ts` (funciones puras) y `metricas-firestore.ts`. Rutas: `src/app/api/metricas/route.ts` y `src/app/api/datos/borrar/route.ts`. Páginas: `src/app/page.tsx`, `src/app/metricas/page.tsx` y `src/app/procesos/[id]/page.tsx`.
+
+**1. Estructura.** `Cascaron` (en el layout raíz, dentro de un `<Suspense>`) pone el `MenuSuperior` en todas las páginas menos `/login`. El menú muestra los dos enlaces (el activo resaltado), el correo y «Cerrar sesión». Como vive en el layout, **no se desmonta al cambiar de página**: ahí viven el Motor y su indicador «Procesando N lotes…».
+
+**2. Subida por lotes (`NuevoProceso`).** Botones claros «Elegir carpeta…» y «Elegir archivos…»; muestra cuántas imágenes encontró, el tamaño y el campo **«Facturas por lote»** (por defecto 100; `0` = todo en un lote) con el número de lotes resultante y una **estimación de lecturas de Firestore** (~5 por factura). Al pulsar «Subir y procesar»: por cada trozo → crear el lote → subir sus imágenes (Fase 3) → `iniciar` → emitir el evento `lote-iniciado` → **pasar al siguiente trozo sin esperar** a que termine de procesarse. Una lista muestra, por lote, la barra de subida y la de procesamiento, y debajo las cifras acumuladas en vivo. Los archivos que no se pudieron subir quedan en una lista con «Reintentar esos archivos».
+
+**3. El Motor (`Motor.tsx`).** Un componente del layout que lanza **3 trabajadores** asíncronos. Cada uno repite: elegir un lote en ejecución que no esté "agotado" → `POST …/lote` → si respondió `reclamados: 0`, marcar el lote como agotado (se vuelve a mirar a los 30 s por si caducó el arrendamiento de otra función) y pedir `finalizar` (que se reintenta cada 5 s mientras queden archivos en proceso en otra llamada) → al responder `listo`, quitar el lote y emitir `lote-terminado`. Al montarse descubre con `GET /api/procesos?estado=ejecutando` los lotes que quedaron a medias (por ejemplo, se cerró la pestaña): **todo es idempotente, así que retoma donde quedó.** Ante un error espera cada vez más (hasta 30 s) y reintenta; un 404 significa que el lote se borró; un 401, que la sesión caducó.
+
+**4. Métricas por lote (contadores dentro de la transacción).** Cada lote lleva en `procesos/{id}.metricas`: `aceptadas` y `revision` (cada una con `n`, `subtotal`, `iva`, `impoconsumo`, `total`), `errores`, `duplicadas`, `clientesNuevos` y `proveedores` (un mapa por **NIT del proveedor** con `nombre`, `n` e importes; **solo facturas aceptadas**, porque en las de revisión el NIT puede estar mal leído).
+- Se actualizan con `FieldValue.increment` **dentro de la misma transacción que guarda la factura** (`aplicarMetricas`, que usa `FieldPath` porque el NIT es una clave numérica). Así los contadores siempre cuadran con los datos y no hay que recorrer miles de facturas para mostrar cifras: **abrir el panel cuesta 1 lectura por lote**. Son escrituras ciegas (no leen el documento), así que no provocan reintentos por contención entre lotes concurrentes.
+- `cambiosDe(evento)` (puro, con pruebas) describe qué se incrementa; `sumarMetricas`, `calcularTasas` y `proveedoresOrdenados` (puros) suman lotes y calculan porcentajes; `metricasDesdeEventos` y `scripts/recalcular-metricas.ts <idLote>` reconstruyen las métricas de un lote (por ejemplo, uno anterior a los contadores).
+- **Definiciones** (escríbelas en la interfaz): *Leída correctamente* = pasó **todas** las validaciones (no se compara contra una respuesta conocida: un error que cuadre aritméticamente podría pasar). *Mal leída* = quedó en revisión o dio error. Los porcentajes son sobre las facturas **distintas** procesadas (aceptadas + revisión + errores); las **duplicadas** no cuentan porque ya estaban.
+- `GET /api/metricas` devuelve todos los lotes del usuario (con sus métricas) en **una consulta** y el número de clientes de la base.
+
+**5. Panel de métricas (`PanelMetricas`).** Selector «Todos los lotes / Lote N». Dos **medidores**: «Leídas correctamente» y «Mal leídas (a revisión)», cada uno con porcentaje, barra y «n de total facturas», con icono y texto además del color. Tarjetas: facturas procesadas, duplicadas y clientes en la base. Bloque «Lo procesado»: **antes de IVA, IVA, impoconsumo y total** de las facturas aceptadas, más una nota con las que están en revisión. Tabla **por razón social** (NIT, facturas, importes y una barra proporcional) y tabla **por lote** (correctas y mal leídas con su porcentaje, barra fina de dos tramos, total aceptado, estado, enlaces al Excel y al detalle). Se refresca sola cada 8 s **solo mientras haya lotes procesándose y la pestaña esté visible**, y al instante cuando el motor emite `lote-iniciado` o `lote-terminado`.
+
+**6. Detalle de un lote (`VistaProceso`).** Avance y cifras en vivo leyendo el propio documento del lote (sin consultas de conteo), enlace de descarga del Excel y, **cuando el lote termina**, la tabla de facturas con filtro por estado, antes de IVA / IVA / impoconsumo / total por factura y un enlace a la imagen original (servida por nuestra ruta desde el Blob privado). La lista de facturas se lee **una sola vez** porque cuesta ~2 lecturas por factura.
+
+**7. Borrar todo (`BorrarTodo` + `/api/datos/borrar`).** Pensado para que los estudiantes puedan practicar desde cero. Borra **todo lo guardado, de todos los usuarios**: `facturas`, `indices_numero`, `clientes`, `procesos` (con su cola) y los archivos de Blob. Exige sesión, que se escriba exactamente **`BORRAR`**, y se niega (409) si hay lotes procesándose salvo confirmación extra. Es irreversible y gasta el límite diario de **borrados** de Firestore: avisa de ambas cosas en la interfaz.
+
+**8. Diseño.** Colores por **rol** como variables CSS (fondo, superficie, texto secundario, borde, acento, bueno, malo), con **modo oscuro** que sigue al sistema; los estados *bueno/malo* siempre llevan **icono + texto**, nunca solo color; los importes usan cifras tabulares; las tablas largas hacen scroll horizontal en pantallas estrechas.
+
+**Costo de lecturas (cuota).** Panel de métricas: 1 por lote + 1. Detalle de un lote: 1 por consulta, cada 4 s, solo mientras procesa. Lista de facturas de un lote terminado: ~2 por factura, una vez. Un `count()` cuesta como **mínimo** 1 lectura: no consultes varios conteos por segundo.
+
+**Por qué.** El motor desacopla "subir" de "procesar": el usuario no espera. Los contadores dentro de la transacción convierten un cálculo caro (recorrer facturas) en una lectura barata y siempre consistente.
+
+**Verificación** (referencia: `scripts/probar-ui.ts`, con navegador real vía Playwright): inicia sesión, elige una **carpeta** con `setInputFiles` sobre el input de directorio, fija las facturas por lote, sube y procesa, espera a que todos los lotes terminen, abre «Métricas» y «Detalle», comprueba que el diálogo de borrado exige `BORRAR` y **limpia solo los lotes que él creó** (`scripts/limpiar-lotes.ts`). Debe terminar con **0 errores de consola**. Con `--sin-procesar` bloquea las llamadas de OCR para medir solo la subida (y reporta el retraso máximo del bucle de eventos del navegador). Referencia en producción: 200 facturas en 2 lotes de 100 → ~7 min y 94/100 correctas en cada lote; 1000 imágenes subidas en 10 lotes en 89 s. **Prueba tú mismo el botón «Borrar todo»**: una prueba automática no debe ejecutarlo contra datos reales.
+
+**Errores típicos.** `Date.now()` o `setState` síncrono en un efecto (reglas de lint de React 19: llama a funciones impuras dentro de callbacks y carga datos con `setTimeout(…, 0)` o `async`); durante una navegación coexisten dos `<main>` (en Playwright usa un selector con texto); sondeos demasiado frecuentes que gastan la cuota; dos Motores si montas el componente dos veces; mezclar lotes de dos corridas del generador (los números `FE-000001…` se repiten y esas facturas quedan en revisión con «ya existe en otra factura»: es el comportamiento diseñado).
+
+**Pídele a tu IA.** "Explícame por qué los contadores se actualizan dentro de la transacción y no después, y qué pasaría con las cifras si la función se cayera justo entre las dos cosas."
+
+---
 
 ### Fase D — Despliegue y operación en Vercel
 
-Se trabaja en paralelo con las demás fases (primer despliegue en la Fase 1), pero esta lista debe estar completa al final:
+**Objetivo.** Dejar el sistema listo para que otras personas lo usen sin sorpresas. Se va cumpliendo desde la Fase 1; esta lista debe estar **completa al final**.
 
-- Variables de entorno definidas en Production, Preview y Development; ningún secreto en el repo (`git log -p` sin secretos).
-- `maxDuration` configurado en las rutas de lote y finalización según el plan; tamaño de lote y concurrencia justificados con las mediciones de la Fase 5.
-- **Autenticación:** decidida (Firebase Authentication, ver Fase A). Comprueba en producción que ninguna ruta de API responde sin sesión y que `USUARIOS_PERMITIDOS`, `FIREBASE_ADMIN_PRIVATE_KEY` y el resto de variables están definidas en Vercel. Revisa que las reglas de Firestore sigan en "denegar todo".
-- Los blobs de producción se borran o se conservan según una política explícita (p. ej. borrar las imágenes de procesos antiguos); decide con el estudiante y documéntalo.
-- Registro de errores: revisa los *runtime logs* de Vercel tras la corrida completa y reporta cualquier 504, 413 o error de conexión a la base de datos.
+**Lista de comprobación.**
+1. **Variables de entorno** definidas en Production, Preview y Development; ningún secreto en el repositorio (`git log -p --all -S "BEGIN PRIVATE KEY" --oneline` solo debe encontrar el valor **falso** de `.env.example`).
+2. **`maxDuration`** configurado según el plan Hobby (máximo 300 s): `lote` y `finalizar` 300, `iniciar` 60, `datos/borrar` 300. El tamaño de lote (4) y la concurrencia (3) se justifican con las mediciones de la Fase 5.
+3. **Autenticación en producción**: ninguna ruta de API responde sin sesión (comprueba con `curl` cada ruta: todas deben dar 401); `USUARIOS_PERMITIDOS` y el resto de variables están en Vercel; las **reglas de Firestore siguen en "denegar todo"** (`npx tsx scripts/verificar-reglas.ts`).
+4. **Política de los blobs**: decide y documenta qué pasa con las imágenes y Excel de lotes antiguos (borrarlos tras un tiempo, o con «Borrar todo» entre prácticas). Los blobs ocupan almacenamiento del plan.
+5. **Logs**: revisa los *runtime logs* de Vercel tras una corrida completa y reporta cualquier 504, 413, 500 o error de cuota de Firestore.
+6. **Nota de cuota**: anota lo que gastó la corrida (Blob, CPU activa en Vercel; lecturas, escrituras y borrados en Firestore; usuarios en Authentication). Ver sección 8.
+7. **Aceptación final con la carpeta completa en la URL de producción**: se procesan las 1000 facturas; entre aceptadas, revisión y errores suman **1000**; «Clientes en la base» muestra **850**; cada lote tiene su Excel descargable; **reprocesar la misma carpeta no duplica nada**.
 
-Verificación: la corrida completa en producción sin errores en los logs, y una nota con el uso de cuota (Blob, CPU activa en Vercel; lecturas, escrituras y borrados en Firestore; usuarios en Authentication) que dejó.
+**Verificación.** Corrida completa en producción sin errores en los logs, y una nota con el uso de cuota que dejó. Si dispones del `verdad.json` del conjunto, compara la base con él (exactitud por campo, aceptadas con error no detectado, clientes que no existen en la verdad: deben ser 0). *El repositorio de referencia no incluye un comando `verificar`; `scripts/leer-carpeta.ts` mide la extracción sin base de datos y es un buen punto de partida si quieres escribirlo.*
 
-### Fase G — Generador de facturas (SOLO PROFESOR; los estudiantes reciben un zip)
+---
 
-**Estado: implementado** en `scripts/generar-facturas.ts` (+ `scripts/generador/datos.ts` y `disenos.ts`). Uso: `npm run generar:facturas -- --cantidad 10 --semilla 2026 --salida salida`. Por defecto genera **10** facturas para ir probando; para el ejercicio completo se usa `--cantidad 1000`. Las proporciones (850/1000 clientes distintos, 60/30/10 de calidad, ~15 % móviles) se escalan con la cantidad.
+### Fase G — Generador de facturas (SOLO PROFESOR; los estudiantes reciben las imágenes)
 
-- **Cero tokens:** todo es determinista (`@faker-js/faker` con semilla fija + HTML renderizado con `playwright` + degradación con `sharp`). **No se usa ningún LLM** para generar facturas. (El `.env` local tiene una `DEEPSEEK_API_KEY`: el generador no la usa; si algún día se usa, que sea como mejora opcional de extracción para facturas en `revision`, nunca para generar datos.)
-- Crea primero un **pool de clientes únicos** (documento de 9 dígitos con **dígito de verificación válido**, usando `src/lib/ocr/nit.ts`) y asigna las facturas restantes a clientes ya usados; un cliente repetido conserva **exactamente el mismo documento y nombre**. Mezcla el orden final.
-- Cada factura incluye: proveedor (razón social ficticia, NIT con DV válido, dirección, responsabilidad de IVA, resolución DIAN), número único `FE-000001…` sin relación con el nombre del archivo, fecha y hora de emisión, fecha de vencimiento, forma y medio de pago, **documento y nombre del cliente**, 1–6 ítems, **valor antes de IVA, IVA 19 %, impoconsumo 4 % (solo facturas de telefonía móvil)**, total y un CUFE simulado (SHA-384 con la estructura de la DIAN y clave técnica ficticia: no es verificable). Cada imagen lleva el aviso "documento sintético con datos ficticios para fines académicos".
-- **4 diseños** (clásico con tabla, encabezado de color con texto blanco, ticket POS angosto, caja con borde doble), con fuentes, etiquetas de totales, formatos de NIT y de fecha distintos. Hay descripciones largas que se parten en dos líneas y una descripción con "Monitor" (falso positivo de "nit").
-- Calidad por cuotas: limpia (PNG), media (rotación leve, desenfoque, JPEG 70) y mala (65 % de resolución, rotación, desenfoque, JPEG ~38).
-- Salida: `salida/facturas/` con **solo las imágenes** (`factura_0001.png|jpg` …) y `salida/verdad.json` (datos correctos de cada factura, incluidos ítems, diseño y calidad) **fuera** de esa carpeta. `salida/` está en `.gitignore`.
-- Al terminar el script **comprueba y falla (exit 1)** si: el número de imágenes no coincide, hay números repetidos, `subtotal + IVA + INC ≠ total`, el impoconsumo no es coherente con "móvil" o algún DV es inválido. Imprime imágenes, clientes distintos, repeticiones, móviles, diseños, calidad y tamaño.
-- Para el zip del curso: `--cantidad 1000` y revisar que el tamaño del zip sea del orden de 90 MB (medido: 1000 facturas ocupan 108,7 MB; con 10 ocupan ~1 MB).
+**Qué es.** `scripts/generar-facturas.ts` (+ `scripts/generador/datos.ts` y `scripts/generador/disenos.ts`) produce facturas colombianas sintéticas **sin ningún modelo de IA** (cero tokens): todo sale de `@faker-js/faker` con semilla fija, HTML dibujado con Chromium (`playwright`) y degradado con `sharp`. Los estudiantes **no** lo ejecutan.
 
-**Conjunto para los estudiantes (generado 2026-11-07)**: `../facturas` = `/home/justo/projects/facturas` (fuera del repositorio): **1000 imágenes** (600 png + 400 jpg, 108 MB), solo imágenes, generadas de una vez con `npm run generar:facturas -- --cantidad 1000 --semilla 2026 --salida ..` (850 clientes distintos, 150 repeticiones, 150 con impoconsumo, 250 por diseño, números `FE-000001…FE-001000` únicos). Las respuestas correctas están en `salida/verdad_1000.json` (SOLO PROFESOR; el generador la deja en `../verdad.json` y se movió ahí para que no viaje con la carpeta de los estudiantes). Ojo: el generador **borra** `<salida>/facturas` antes de escribir; con `--salida ..` borraría `../facturas`. Las 10 facturas de `salida/facturas` (semilla 2026, cantidad 10) son solo de desarrollo y NO forman parte de las 1000 (son otras facturas y numeran desde `FE-000001`: mezclarlas duplicaría números). Importante para la clase: este conjunto se sube desde el selector de carpeta del navegador al Blob; no existe una carpeta `salida/facturas` en el servidor.
+**Uso.** `npm run generar:facturas -- --cantidad 1000 --semilla 2026 --salida <carpeta>` crea `<carpeta>/facturas/` (solo imágenes `factura_0001.png|jpg` …) y `<carpeta>/verdad.json` (las respuestas correctas, **fuera** de la carpeta de imágenes). **El script borra `<carpeta>/facturas` antes de escribir**: apunta a una carpeta donde no haya nada tuyo.
 
-Verificación: el resumen se imprime con las comprobaciones en OK y se revisan a ojo 4 imágenes (una por diseño) — hecho con 10 facturas.
+**Qué genera.** Un pool de clientes únicos (documento de 9 dígitos con DV válido) y facturas restantes asignadas a clientes ya usados (un cliente repetido conserva exactamente el mismo documento y nombre): con 1000 facturas, **850 clientes distintos y 150 repeticiones**; proveedores ficticios con NIT válido; números `FE-000001…` únicos y sin relación con el nombre del archivo; fecha y hora de emisión y de vencimiento; IVA 19 %; impoconsumo 4 % solo en facturas de telefonía móvil (15 %); un CUFE simulado (no verificable ante la DIAN); **4 diseños** (clásico con tabla, encabezado de color con texto blanco, ticket angosto, caja con borde doble) y **3 calidades** por cuotas (60 % limpia, 30 % media con rotación leve y desenfoque, 10 % mala con baja resolución y JPEG agresivo). Cada imagen lleva el aviso "documento sintético con datos ficticios para fines académicos".
 
-## 6. Cuando termines todo
+**Comprobaciones que hace al terminar** (falla con `exit 1` si algo no cuadra): número de imágenes, números repetidos, `subtotal + IVA + INC = total`, impoconsumo coherente con "móvil" y DV válidos. Imprime clientes distintos, repeticiones, móviles, diseños, calidades y tamaño (1000 facturas ≈ 108 MB).
 
-Entrega al estudiante: qué hace cada carpeta, cómo ejecutar en local (copiar `.env.example` a `.env`, rellenarlo y `npm run dev`), cómo desplegar, cómo correr las pruebas, qué resultados obtuvo con la carpeta completa en la URL de producción (con números reales: tiempos, cuota usada, exactitud) y **qué no pudiste verificar**.
+**Cuidado al mezclar conjuntos.** Dos corridas con semillas distintas numeran ambas desde `FE-000001`; si las procesas juntas, las facturas con número repetido (y archivo distinto) quedan en `revision` con "ya existe en otra factura". Genera siempre el conjunto completo de una vez.
+
+## 7. Problemas conocidos y cómo resolverlos
+
+Todos ocurrieron de verdad construyendo este proyecto. Si ves el síntoma, empieza por la causa probable.
+
+| Síntoma | Causa probable | Solución |
+|---|---|---|
+| **Todas** las rutas de API dan **500 en Vercel** pero funcionan en local | `firebase-admin/auth` → `jwks-rsa@4` → `jose@6` (solo ESM): `ERR_REQUIRE_ESM` en las funciones | `overrides: { "firebase-admin": { "jwks-rsa": "3.2.2" } }` en `package.json` y `npm install` (Fase A) |
+| `lote` responde **504** `FUNCTION_INVOCATION_TIMEOUT` | El worker de tesseract no encontró su núcleo WASM (no estaba en el paquete) y se colgó sin error | `outputFileTracingIncludes` completo + topes de tiempo en `motor.ts` (Fase 5) |
+| `Cannot find module 'tesseract.js-core/tesseract-core-relaxedsimd'` | Se incluyeron solo algunas variantes del núcleo | Incluir **todo** `node_modules/tesseract.js-core/**/*` |
+| Login correcto pero **403 "Este correo no está autorizado"** | `USUARIOS_PERMITIDOS` ausente, con comillas pegadas en el panel de Vercel, o sin Redeploy | Definirla sin comillas en el entorno correcto y hacer Redeploy |
+| Tras iniciar sesión todo da 401 en local | Cookie con `secure: true` sobre `http://localhost` | `secure` solo si `NODE_ENV === "production"` |
+| Una variable nueva no llega a Vercel | Las variables solo se aplican a despliegues nuevos | Redeploy |
+| `The query requires an index` (Firestore) | Consulta con filtros combinados o filtro + agregación (`sum`) | Abrir el enlace del mensaje y crear el índice; o rediseñar para usar un solo campo |
+| Error de compilación: `Route segment config "dynamic" is not compatible with nextConfig.cacheComponents` | Con `cacheComponents` no existen `dynamic`, `revalidate`, `fetchCache` | Quitarlo y usar `await connection()` de `next/server` |
+| TypeScript: `RouteContext` / `PageProps` no existen | Los tipos de rutas se generan | `npx next typegen` |
+| `tsx` dice `Top-level await is currently not supported with the cjs output format` | El proyecto no es `"type": "module"` | Envolver el script en `async function main()` |
+| La subida no muestra ningún botón | `<input type="file">` sin estilo es solo texto | `<label>` con apariencia de botón + input `sr-only` |
+| Cerré la pestaña y dejó de procesar | El Motor corre en el navegador | Abrir cualquier página de la app: retoma los lotes `ejecutando` |
+| Facturas en `revision` con "El número FE-… ya existe en otra factura" | Se mezclaron conjuntos con la misma numeración (o dos archivos distintos con el mismo número) | Es el comportamiento diseñado (no se pierden); genera/procesa un conjunto completo de una vez |
+| `RESOURCE_EXHAUSTED` / cuota de Firestore | Se agotó el límite diario del plan gratuito | Esperar al día siguiente, reducir el tamaño de la prueba o usar un plan de pago |
+| Las reglas de Firestore dejan leer a cualquiera | Quedaron las del "modo de prueba" | Reemplazar por `allow read, write: if false;` y correr `scripts/verificar-reglas.ts` |
+| La IA imprimió el `.env` o la clave privada | Un comando que mostró valores (p. ej. `awk` sobre el `.env`) | Considerar la credencial comprometida: generar otra, borrar la anterior, actualizar `.env` y Vercel |
+| `next dev` modifica `AGENTS.md` | Next mantiene su bloque `BEGIN:nextjs-agent-rules` | Dejar el bloque y commitearlo con tu trabajo |
+| Lint: `react-hooks/set-state-in-effect` o `purity` | `setState` síncrono en un efecto, o `Date.now()` al renderizar | Mover la llamada a un callback/`async` o a un estado actualizado por eventos |
+| Playwright: `strict mode violation … resolved to 2 elements` (`main`) | Durante la navegación coexisten la página vieja y la nueva | Selector más específico (por texto o `nth`) |
+| Un script fuera del proyecto dice `Cannot find module '@vercel/blob'` | Node resuelve módulos desde la carpeta del script | Mantener los scripts dentro de `scripts/` |
+
+## 8. Cuotas y costos (plan gratuito)
+
+Cifras de referencia; **verifícalas en la documentación vigente de cada servicio** (los límites cambian).
+
+| Recurso | Dato |
+|---|---|
+| Firestore (plan gratuito) | 50 000 lecturas al día (dato del curso); también hay límites diarios de escrituras y de borrados (del orden de decenas de miles; verifícalos) |
+| Una factura procesada | ~5 lecturas y ~6 escrituras (Fase 6) |
+| 1000 facturas | ≈ 5 000 lecturas y ≈ 6 000 escrituras (estimado, no medido al detalle) |
+| Borrar los datos de 1000 facturas | ≈ 4 000 borrados (facturas, índices, clientes y cola) + las lecturas para listarlos |
+| Un `count()` de Firestore | como mínimo 1 lectura |
+| Panel de métricas | 1 lectura por lote + 1 |
+| Vercel Hobby | `maxDuration` 300 s, 1 vCPU, cuerpo de petición de 4,5 MB, paquete de la función 250 MB sin comprimir |
+
+**Tiempos medidos** (Vercel Hobby, 3 lotes concurrentes de 4 archivos): ~1,5 s por factura en promedio (10 facturas en 15 s; 200 en ~7 min incluyendo la subida); **1000 facturas ≈ 25 a 35 minutos**. El arranque en frío del primer lote tarda unos 9 s.
+
+## 9. Comandos y scripts
+
+| Comando | Para qué |
+|---|---|
+| `npm run dev` / `npm run build` / `npm run start` | desarrollo, compilación de producción y servidor de producción local |
+| `npm run lint` · `npx tsc --noEmit` · `npm test` | las tres comprobaciones previas a cada commit |
+| `npm run docs` | regenera `AGENTS.md` y `CLAUDE.md` desde `docs/fuente/` (solo repositorio de referencia) |
+| `npm run generar:facturas -- --cantidad N --semilla S --salida <carpeta>` | generador de facturas (solo profesor, Fase G) |
+| `npx tsx scripts/probar-conexion.ts` | Firestore, Auth y Blob responden (Fase 0) |
+| `npx tsx scripts/verificar-reglas.ts` | las reglas de Firestore están cerradas (Fase 2) |
+| `CORREO=… CLAVE=… npx tsx scripts/crear-usuario.ts` | crea un usuario de Firebase Auth sin dejar la contraseña en un archivo |
+| `npx tsx scripts/ocr-muestras.ts <imágenes> <salida>` | guarda el texto del OCR de cada imagen en 3 modos (material para el extractor) |
+| `npx tsx scripts/leer-carpeta.ts <imágenes> <verdad.json>` | mide el extractor sobre una carpeta (sin base de datos) |
+| `npx tsx scripts/comparar-extraccion.ts <textos> <verdad.json>` | compara el extractor con los textos de OCR guardados |
+| `npx tsx scripts/probar-pipeline.ts <imágenes> <verdad.json>` | prueba de servidor: Blob + cola + lotes + Excel + idempotencia (limpia lo que crea) |
+| `CORREO=… CLAVE=… npx tsx scripts/probar-http.ts <url> <imágenes>` | recorrido completo **por HTTP** contra local o producción (limpia lo que crea) |
+| `CORREO=… CLAVE=… npx tsx scripts/probar-ui.ts <url> <imágenes> <porLote> <capturas>` | prueba de la interfaz con navegador real (`--sin-procesar` para medir solo la subida) |
+| `npx tsx scripts/limpiar-lotes.ts <idLote> …` | borra **solo** los lotes indicados |
+| `npx tsx scripts/recalcular-metricas.ts <idLote>` | reconstruye las métricas de un lote |
+
+## 10. Glosario
+
+- **NIT / CC**: número de identificación tributaria (empresas) o cédula (personas). **DV**: dígito de verificación del NIT (algoritmo de la DIAN).
+- **DIAN**: autoridad tributaria de Colombia. **Factura electrónica**: factura con número con prefijo, resolución de numeración y **CUFE** (código único, hash de 96 caracteres).
+- **IVA**: impuesto al valor agregado, 19 % general. **INC / impoconsumo**: impuesto nacional al consumo, 4 % en telefonía móvil y datos.
+- **COP**: pesos colombianos (en el proyecto, enteros sin decimales).
+- **OCR**: reconocimiento óptico de caracteres: convertir la imagen de una factura en texto.
+- **Lote**: en esta aplicación, una subida (un proceso) con su cola, su Excel y sus métricas.
+- **Cola de trabajo**: la lista de archivos por procesar, guardada en Firestore.
+- **Arrendamiento (lease)**: marca de tiempo que "reserva" un archivo mientras alguien lo procesa; si la función se cae, caduca y otro lo toma.
+- **Idempotente**: se puede repetir sin cambiar el resultado (procesar dos veces la misma carpeta no duplica nada).
+- **Hash (SHA-256)**: huella de 64 caracteres de un archivo; la misma imagen siempre da el mismo hash.
+- **Transacción**: grupo de lecturas y escrituras que se aplican completas o no se aplican.
+- **Cookie de sesión**: archivo pequeño que el navegador envía en cada petición para probar quién eres; aquí la crea el servidor y el navegador no puede leerla (`httpOnly`).
+- **Motor**: el componente del navegador que va pidiendo al servidor que procese lotes.
