@@ -15,9 +15,10 @@ export interface Usuario {
 
 /** Correos autorizados (USUARIOS_PERMITIDOS, separados por comas). Sin la variable: nadie entra. */
 export function correoPermitido(email: string | undefined): boolean {
+  // En el panel de Vercel las comillas NO se quitan solas (como en un .env): se toleran comillas y espacios.
   const lista = (process.env.USUARIOS_PERMITIDOS ?? "")
     .split(",")
-    .map((c) => c.trim().toLowerCase())
+    .map((c) => c.trim().replace(/^["']+|["']+$/g, "").trim().toLowerCase())
     .filter(Boolean);
   return Boolean(email) && lista.includes(email!.toLowerCase());
 }
