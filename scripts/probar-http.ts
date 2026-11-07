@@ -66,7 +66,8 @@ async function main(): Promise<void> {
         const t = Date.now();
         const r = await j(`/api/procesos/${id}/lote`, { method: "POST" });
         if (!r.ok) throw new Error(`lote ${r.status}: ${await r.text()}`);
-        const d = (await r.json()) as { reclamados: number; detalle: { ms: number }[] };
+        const d = (await r.json()) as { reclamados: number; detalle: { ms: number; resultado: string }[] };
+        for (const x of d.detalle) if (x.resultado.startsWith("error")) console.log("    ", x.resultado.slice(0, 400));
         if (d.reclamados === 0) return;
         tiempos.push(...d.detalle.map((x) => x.ms));
         console.log(`  lote: ${d.reclamados} archivos en ${((Date.now() - t) / 1000).toFixed(1)} s`);

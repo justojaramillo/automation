@@ -3,8 +3,9 @@ import type { NextConfig } from "next";
 const OCR_ARCHIVOS = [
   "./node_modules/@tesseract.js-data/spa/4.0.0_best_int/**/*",
   "./node_modules/tesseract.js/**/*",
-  "./node_modules/tesseract.js-core/package.json",
-  "./node_modules/tesseract.js-core/*-lstm*",
+  // Núcleo completo: en Vercel el worker pidió `tesseract-core-relaxedsimd` (sin -lstm) aunque se use OEM 1;
+  // el núcleo elegido depende de la CPU (relaxedsimd / simd / base), así que no se adivinan variantes.
+  "./node_modules/tesseract.js-core/**/*",
   "./node_modules/{bmp-js,idb-keyval,is-url,node-fetch,regenerator-runtime,wasm-feature-detect,zlibjs,whatwg-url,tr46,webidl-conversions}/**/*",
 ];
 
@@ -25,7 +26,7 @@ const nextConfig: NextConfig = {
   // Vercel faltan y tesseract intentaría descargarlos de internet).
   // tesseract.js lanza su worker en un hilo aparte que carga el núcleo WASM y varias dependencias con
   // require() dinámico: el trazador no las ve y, sin ellas, el hilo muere en silencio y la función se
-  // cuelga hasta el 504 (así falló en Vercel). Solo se incluyen las variantes *-lstm del núcleo (OEM 1).
+  // cuelga hasta el 504 (así falló en Vercel), o falla con "Cannot find module".
   outputFileTracingIncludes: {
     "/api/procesos/**": OCR_ARCHIVOS,
     "/api/salud": OCR_ARCHIVOS,
