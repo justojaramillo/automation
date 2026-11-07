@@ -23,11 +23,11 @@ Pega esto (cambiando el número de fase) en tu agente:
 
 ```
  navegador                                   Vercel (funciones)                       servicios
-┌───────────────────────┐   token de subida  ┌──────────────────────────┐
-│ 1. eliges la carpeta  │ ─────────────────► │ POST /api/blob/subir     │
-│ 2. se divide en lotes │                    └──────────────────────────┘
-│ 3. subes cada imagen  │ ══ directo ═══════════════════════════════════════════►  Vercel Blob (privado)
-│    (sin pasar por API)│
+┌───────────────────────┐   una imagen por   ┌──────────────────────────┐
+│ 1. eliges la carpeta  │   petición         │ POST …/imagenes          │
+│ 2. se divide en lotes │ ─────────────────► │ valida: sesión, lote,    │
+│ 3. subes cada imagen  │                    │ tamaño, tipo real        │ ───────►  Vercel Blob (privado)
+│    (a través de la API)│                   └──────────────────────────┘
 │ 4. POST …/iniciar     │ ─────────────────► crea la cola en Firestore   ───────►  Firestore
 │                       │                                                          (clientes, facturas,
 │ MOTOR (segundo plano) │   3 llamadas       ┌──────────────────────────┐          índices, procesos,
@@ -38,7 +38,8 @@ Pega esto (cambiando el número de fase) en tu agente:
 │                       │                    │ guarda (transacción)     │
 │ 6. ve métricas, tabla,│ ◄───────────────── │ genera Excel ────────────┼───────►  Vercel Blob (Excel)
 │    descarga el Excel  │                    └──────────────────────────┘
-└───────────────────────┘     (todas las rutas exigen sesión de Firebase Auth)
+└───────────────────────┘     (el navegador NUNCA habla directo con Blob ni con Firestore;
+                                todas las rutas exigen sesión de Firebase Auth)
 ```
 
 Funciones finales: inicio de sesión (correo y contraseña); subir una carpeta de hasta 1000 facturas que se divide en **lotes**; procesamiento automático en segundo plano con avance en vivo (incluye antes de IVA, IVA, impoconsumo y total acumulados); un **Excel por lote**; **panel de métricas** (facturas leídas correctamente vs mal leídas, por lote o en total, y totales por razón social); tabla de resultados con la imagen original de cada factura; y un botón para borrar todos los datos de prueba.

@@ -100,6 +100,9 @@
     var guardado = localStorage.getItem("tema-presentacion");
     if (guardado) document.documentElement.setAttribute("data-tema", guardado);
   } catch (e) { /* sin almacenamiento */ }
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    Array.prototype.forEach.call(document.querySelectorAll("#escenario svg"), function (sv) { if (sv.pauseAnimations) sv.pauseAnimations(); });
+  }
   escalar();
   var inicio = parseInt((location.hash || "").replace("#", ""), 10);
   slides[0].classList.add("activa");

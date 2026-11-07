@@ -1,16 +1,14 @@
-// Recorrido completo por HTTP, igual que la interfaz: login → crear proceso → subida directa a Blob
-// (token de /api/blob/subir) → iniciar → lotes concurrentes → finalizar → facturas → Excel. Luego LIMPIA.
+// Recorrido completo por HTTP, igual que la interfaz: login → crear proceso → subida de cada imagen A TRAVÉS
+// de la API (/api/procesos/<id>/imagenes, que valida y guarda en Blob) → iniciar → lotes concurrentes → finalizar → facturas → Excel. Luego LIMPIA.
 //   CORREO=.. CLAVE=.. npx tsx scripts/probar-http.ts <urlBase> <carpetaImagenes> [cantidad] [--conservar]
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";
 import { del, list } from "@vercel/blob";
-import { upload } from "@vercel/blob/client";
 
 try { process.loadEnvFile(".env"); } catch { /* sin .env */ }
 import { firestore } from "../src/lib/firebase/admin";
 import { COLECCIONES, type Factura } from "../src/lib/modelo/tipos";
-import { pathnameDeSubida } from "../src/lib/rutas";
 import { refProceso } from "../src/lib/procesamiento/proceso";
 
 async function main(): Promise<void> {
@@ -36,24 +34,36 @@ async function main(): Promise<void> {
   const { id } = (await (await j("/api/procesos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ carpeta: "prueba-http" }) })).json()) as { id: string };
   console.log("proceso", id);
   try {
-    // 2. Subida directa a Blob con token emitido por nuestro servidor.
+    // 2. Subida a través de nuestra API: una imagen por petición, con 6 en paralelo (como la interfaz).
+    const urlImagen = (k: number, nombre: string, lote = id) => `${base}/api/procesos/${lote}/imagenes?indice=${k}&nombre=${encodeURIComponent(nombre)}`;
     const t0 = Date.now();
     let i = 0;
     await Promise.all(Array.from({ length: 6 }, async () => {
       while (i < archivos.length) {
         const k = i++;
-        await upload(pathnameDeSubida(id, k + 1, archivos[k]), readFileSync(path.join(carpeta, archivos[k])), {
-          access: "private", handleUploadUrl: `${base}/api/blob/subir`, headers: h,
-          contentType: archivos[k].endsWith(".png") ? "image/png" : "image/jpeg",
+        const r = await fetch(urlImagen(k + 1, archivos[k]), {
+          method: "POST", headers: { ...h, "content-type": archivos[k].endsWith(".png") ? "image/png" : "image/jpeg" },
+          body: readFileSync(path.join(carpeta, archivos[k])),
         });
+        if (!r.ok) throw new Error(`subida de ${archivos[k]}: ${r.status} ${await r.text()}`);
       }
     }));
-    console.log(`${archivos.length} imágenes subidas por client upload en ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+    console.log(`${archivos.length} imágenes subidas por la API en ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 
-    // Seguridad: ruta fuera del proceso y tipo no permitido deben rechazarse.
-    for (const mala of [`procesos/otro/0001-x.png`, `procesos/${id}/script.html`]) {
-      try { await upload(mala, "x", { access: "private", handleUploadUrl: `${base}/api/blob/subir`, headers: h }); console.log("¡SE ACEPTÓ", mala, "!"); }
-      catch { console.log(`rechazada correctamente: ${mala}`); }
+    // Seguridad: el servidor debe rechazar lo que no sea una imagen válida del lote del usuario.
+    const png = readFileSync(path.join(carpeta, archivos.find((a) => a.endsWith(".png")) ?? archivos[0]));
+    const casos: [string, number, () => Promise<Response>][] = [
+      ["sin sesión", 401, () => fetch(urlImagen(1, "x.png"), { method: "POST", headers: { "content-type": "image/png" }, body: png })],
+      ["texto disfrazado de .png", 415, () => fetch(urlImagen(901, "falsa.png"), { method: "POST", headers: { ...h, "content-type": "image/png" }, body: "<script>alert(1)</script>".repeat(10) })],
+      ["firma PNG pero archivo dañado", 415, () => fetch(urlImagen(902, "rota.png"), { method: "POST", headers: { ...h, "content-type": "image/png" }, body: Buffer.concat([png.subarray(0, 8), Buffer.alloc(300, 7)]) })],
+      ["más de 4 MB", 413, () => fetch(urlImagen(903, "enorme.png"), { method: "POST", headers: { ...h, "content-type": "image/png" }, body: Buffer.concat([png.subarray(0, 8), Buffer.alloc(4_200_000)]) })],
+      ["lote que no existe", 404, () => fetch(urlImagen(904, "x.png", "AAAAAAAAAAAAAAAAAAAA"), { method: "POST", headers: { ...h, "content-type": "image/png" }, body: png })],
+      ["índice inválido", 400, () => fetch(`${base}/api/procesos/${id}/imagenes?indice=0&nombre=x.png`, { method: "POST", headers: { ...h, "content-type": "image/png" }, body: png })],
+    ];
+    for (const [titulo, esperado, peticion] of casos) {
+      const r = await peticion();
+      console.log(`  rechazo «${titulo}»: ${r.status} ${r.status === esperado ? "✓" : `✗ (se esperaba ${esperado})`}`);
+      if (r.status !== esperado) throw new Error(`El servidor respondió ${r.status} en «${titulo}»`);
     }
 
     // 3. Iniciar y bucle de lotes concurrentes (como VistaProceso).
@@ -78,8 +88,8 @@ async function main(): Promise<void> {
 
     const fin = await (await j(`/api/procesos/${id}/finalizar`, { method: "POST" })).json();
     console.log("finalizar →", fin);
-    const estado = (await (await j(`/api/procesos/${id}`)).json()) as { estado: string; avance: Record<string, number> };
-    console.log("estado:", estado.estado, JSON.stringify(estado.avance));
+    const estado = (await (await j(`/api/procesos/${id}`)).json()) as { estado: string; metricas: Record<string, unknown> };
+    console.log("estado:", estado.estado, JSON.stringify(estado.metricas));
     const { facturas } = (await (await j(`/api/procesos/${id}/facturas`)).json()) as { facturas: { hash: string; estado: string }[] };
     console.log(`facturas: ${facturas.length} (${facturas.filter((f) => f.estado === "aceptada").length} aceptadas)`);
 

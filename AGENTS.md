@@ -43,11 +43,11 @@ Pega esto (cambiando el número de fase) en tu agente:
 
 ```
  navegador                                   Vercel (funciones)                       servicios
-┌───────────────────────┐   token de subida  ┌──────────────────────────┐
-│ 1. eliges la carpeta  │ ─────────────────► │ POST /api/blob/subir     │
-│ 2. se divide en lotes │                    └──────────────────────────┘
-│ 3. subes cada imagen  │ ══ directo ═══════════════════════════════════════════►  Vercel Blob (privado)
-│    (sin pasar por API)│
+┌───────────────────────┐   una imagen por   ┌──────────────────────────┐
+│ 1. eliges la carpeta  │   petición         │ POST …/imagenes          │
+│ 2. se divide en lotes │ ─────────────────► │ valida: sesión, lote,    │
+│ 3. subes cada imagen  │                    │ tamaño, tipo real        │ ───────►  Vercel Blob (privado)
+│    (a través de la API)│                   └──────────────────────────┘
 │ 4. POST …/iniciar     │ ─────────────────► crea la cola en Firestore   ───────►  Firestore
 │                       │                                                          (clientes, facturas,
 │ MOTOR (segundo plano) │   3 llamadas       ┌──────────────────────────┐          índices, procesos,
@@ -58,7 +58,8 @@ Pega esto (cambiando el número de fase) en tu agente:
 │                       │                    │ guarda (transacción)     │
 │ 6. ve métricas, tabla,│ ◄───────────────── │ genera Excel ────────────┼───────►  Vercel Blob (Excel)
 │    descarga el Excel  │                    └──────────────────────────┘
-└───────────────────────┘     (todas las rutas exigen sesión de Firebase Auth)
+└───────────────────────┘     (el navegador NUNCA habla directo con Blob ni con Firestore;
+                                todas las rutas exigen sesión de Firebase Auth)
 ```
 
 Funciones finales: inicio de sesión (correo y contraseña); subir una carpeta de hasta 1000 facturas que se divide en **lotes**; procesamiento automático en segundo plano con avance en vivo (incluye antes de IVA, IVA, impoconsumo y total acumulados); un **Excel por lote**; **panel de métricas** (facturas leídas correctamente vs mal leídas, por lote o en total, y totales por razón social); tabla de resultados con la imagen original de cada factura; y un botón para borrar todos los datos de prueba.
@@ -98,7 +99,7 @@ Si vas a escribir algo de esta lista, **para y lee la documentación** en `node_
 |---|---|---|
 | Hosting | **Vercel**, plan Hobby, proyecto enlazado a GitHub | Cada `git push` despliega. Node 24 (`"engines": { "node": "24.x" }`). |
 | Framework | **Next.js 16.4.5**, App Router, TypeScript estricto, React 19.3.0 | Route Handlers como API. Opción `cacheComponents: true`. |
-| Archivos | **Vercel Blob** (`@vercel/blob` 2.8.2), store **privado** | Las facturas tienen datos de clientes. El acceso (privado/público) **no se puede cambiar** tras crear el store. El navegador sube directo con `upload()` de `@vercel/blob/client` y un token que emite nuestro servidor. |
+| Archivos | **Vercel Blob** (`@vercel/blob` 2.8.2), store **privado** | Las facturas tienen datos de clientes. El acceso (privado/público) **no se puede cambiar** tras crear el store. El navegador **no** habla con Blob: manda cada imagen a nuestra API, que la valida y es quien escribe en el almacén (`put` desde el servidor). |
 | Base de datos | **Cloud Firestore** vía `firebase-admin` 14.5.0, **solo desde el servidor** | NoSQL de documentos. La cuenta de servicio se salta las reglas, por eso las **reglas deben quedar en "denegar todo"**. |
 | Autenticación | **Firebase Authentication** (correo y contraseña): `firebase` 13.2.0 en el navegador | El servidor cambia el ID token por una **cookie de sesión** y la verifica en cada ruta. |
 | OCR | `tesseract.js` 7.0.0 + `@tesseract.js-data/spa` 1.0.0 | WASM; los datos del idioma vienen del paquete npm (sin descargas de red). |
@@ -117,11 +118,11 @@ Comprobar compatibilidad entre `vitest`, `firebase-admin` y `@types/node` (hubo 
 Entender estas cuatro restricciones explica casi todas las decisiones del proyecto:
 
 1. **No hay un proceso que viva mucho tiempo.** Las funciones son efímeras (Hobby: máximo 300 s por invocación). Un "trabajo en segundo plano" en memoria del servidor no funciona. Por eso el avance se guarda en la base de datos y el trabajo se reparte en **lotes pequeños e idempotentes** (se pueden repetir sin duplicar nada) que un **motor en el navegador** va pidiendo.
-2. **El cuerpo de una petición no pasa de 4,5 MB.** Las imágenes no pueden pasar por nuestra API: el navegador las sube **directo a Blob** con un token de un solo uso.
+2. **El cuerpo de una petición no pasa de 4,5 MB.** Por eso cada imagen viaja en **su propia petición** a nuestra API (una factura pesa unos 100 KB; el servidor rechaza lo que pase de 4 MB). Decisión consciente: la API valida cada archivo y el navegador nunca recibe permisos sobre el almacén. Contrapartida: una invocación por imagen y un tope de tamaño; con archivos de decenas de MB habría que reconsiderarlo (la alternativa, subida directa con un token de un solo uso, evita el límite pero entrega permisos al navegador).
 3. **El sistema de archivos es de solo lectura** (salvo `/tmp`). Todo lo persistente va a Blob o a Firestore. Un servidor en la nube tampoco puede escribir en el disco del usuario: el Excel se guarda en Blob y se descarga desde la interfaz.
 4. **1 vCPU en Hobby.** Un pool propio de hilos no acelera nada; el paralelismo se logra con **varias invocaciones concurrentes** de la función (el motor lanza 3 llamadas `lote` a la vez y Vercel crea una instancia por cada una).
 
-Consecuencia de seguridad: al no existir un explorador de carpetas del servidor desaparece el riesgo de recorrer su disco, pero aparece otro: cualquiera con la URL podría gastar cuota de Blob, Firestore y CPU. Por eso la autenticación se construye **antes** de la subida (Fase A) y todas las rutas la exigen.
+Consecuencia de seguridad: al no existir un explorador de carpetas del servidor desaparece el riesgo de recorrer su disco, pero aparece otro: cualquiera con la URL podría gastar cuota de Blob, Firestore y CPU. Por eso la autenticación se construye **antes** de la subida (Fase A) y todas las rutas la exigen; y por eso el servidor valida cada imagen (tamaño, tipo real y que se pueda leer) antes de guardarla.
 
 ## 5. Mapa del repositorio
 
@@ -132,9 +133,8 @@ src/app/                       páginas y Route Handlers (la API)
   procesos/[id]/page.tsx       detalle de un lote (avance, Excel, tabla de facturas)
   login/page.tsx               inicio de sesión
   api/sesion/route.ts          login/logout: ID token → cookie de sesión
-  api/blob/subir/route.ts      emite tokens de subida directa a Blob (valida todo)
   api/procesos/route.ts        crea un lote / lista los del usuario
-  api/procesos/[id]/…          iniciar, lote, finalizar, excel, facturas, estado
+  api/procesos/[id]/…          imagenes (sube y valida), iniciar, lote, finalizar, excel, facturas, estado
   api/metricas/route.ts        métricas de todos los lotes (1 lectura por lote)
   api/facturas/[hash]/imagen/  sirve la imagen original desde el Blob privado
   api/datos/borrar/route.ts    «Borrar todo» (confirmación escrita)
@@ -147,7 +147,8 @@ src/lib/modelo/tipos.ts        tipos de las colecciones de Firestore
 src/lib/ocr/                   motor (tesseract), extractor, validador, nit, leer-factura
 src/lib/procesamiento/         cola, lote, guardar, iniciar, finalizar, metricas, avance
 src/lib/excel/generar.ts       generación del Excel
-src/lib/blob.ts, rutas.ts      utilidades de Blob (servidor) y de rutas (servidor y navegador)
+src/lib/blob.ts, rutas.ts      utilidades de Blob (servidor) y de rutas de archivos
+src/lib/imagen.ts              validación pura de imágenes por sus bytes (con pruebas)
 scripts/                       verificaciones y herramientas (ver sección 9)
 docs/fuente/                   fuente de AGENTS.md y CLAUDE.md (solo en el repositorio de referencia)
 docs/presentaciones/           dos presentaciones HTML para la clase: automatización y construcción paso a paso
@@ -384,26 +385,26 @@ Las fases conservan el número histórico (por eso `fase-3` va después de `fase
 
 ---
 
-### Fase 3 — Selección y subida de la carpeta a Blob
+### Fase 3 — Selección y subida de la carpeta (a través de la API)
 
-**Objetivo.** Elegir una carpeta con miles de imágenes en el navegador y subirla a Blob **sin pasar por nuestra API** y sin que la página se bloquee.
+**Objetivo.** Elegir una carpeta con miles de imágenes en el navegador y subirla **a través de nuestra API**, que valida cada archivo y es la única que escribe en Blob, sin que la página se bloquee.
 
-**Qué construyes.** `src/lib/rutas.ts` (nombres de archivo, usable en servidor y navegador), `src/app/api/blob/subir/route.ts` (emite tokens), `POST /api/procesos` en `src/app/api/procesos/route.ts` (crea el lote) y la parte de subida de `src/componentes/NuevoProceso.tsx`.
+**Qué construyes.** `src/lib/imagen.ts` (validación pura por bytes, con pruebas en `src/lib/imagen.test.ts`), `src/lib/rutas.ts` (nombres de archivo), `src/app/api/procesos/[id]/imagenes/route.ts` (recibe y valida **una imagen por petición**), `src/lib/procesamiento/subidas.ts`, `POST /api/procesos` en `src/app/api/procesos/route.ts` (crea el lote) y la parte de subida de `src/componentes/NuevoProceso.tsx`.
 
 **Pasos.**
 1. **Elegir la carpeta**: `<input type="file" webkitdirectory multiple>` (el navegador no entrega rutas reales del disco). TypeScript no conoce `webkitdirectory`: usa un `@ts-expect-error` comentado. Un `<input type="file">` sin estilo es solo texto; envuélvelo en una `<label>` con apariencia de botón y deja el input con `sr-only`. Ofrece también "Elegir archivos" (algunos navegadores móviles no soportan carpetas). Filtra en el cliente `.png/.jpg/.jpeg` y muestra el conteo y el tamaño.
 2. **Lotes**: divide la selección en trozos (por defecto 100). Cada trozo es un lote: `POST /api/procesos` crea un documento en `procesos` (estado `subiendo`, con el `uid`) y devuelve el `id`.
-3. **Subida directa**: `upload()` de `@vercel/blob/client` con `access: "private"` y `handleUploadUrl: "/api/blob/subir"`. La ruta de cada archivo es `procesos/<id>/<NNNN>-<nombre limpio>` (índice con ceros + nombre sin tildes ni caracteres raros): es único dentro del lote.
-4. **Ruta `handleUpload`** (`/api/blob/subir`): exige sesión; atiende **solo** el evento `blob.generate-client-token`; valida que el proceso exista, sea del usuario y esté en estado `subiendo`, que la ruta cumpla `^procesos/<id>/[^/]+$` y termine en imagen, tipos `image/png` e `image/jpeg`, tamaño máximo 8 MB; `allowOverwrite: true` para poder reintentar. **No dependas de `onUploadCompleted`**: no se dispara en local sin túnel; al terminar, el servidor lista el prefijo con `list()` (Fase 6).
-5. **Concurrencia 6 y reintentos**: seis subidas a la vez, hasta 3 intentos por archivo con espera creciente. **Un archivo que falla no detiene el resto**: se guarda en una lista para "Reintentar esos archivos". Sin esto, 1000 subidas se abortan por una sola falla.
+3. **Una petición por imagen**: `fetch("/api/procesos/<id>/imagenes?indice=N&nombre=…", { method: "POST", headers: { "content-type": tipo }, body: archivo })`; el cuerpo es el propio `File` (el navegador envía los bytes, sin `multipart`). **Seis en paralelo**; hasta 3 intentos con espera creciente para fallas de red o errores 5xx; un **rechazo 4xx del servidor no se reintenta** (el archivo es el problema). **Un archivo que falla no detiene el resto**: queda en una lista, con su motivo, para «Reintentar esos archivos».
+4. **La ruta valida en este orden**: sesión (401) → el lote existe, es del usuario y está en `subiendo` (404; la respuesta afirmativa se recuerda 20 s en la memoria de la instancia para no leer Firestore por cada imagen) → índice válido (400) → **tamaño** ≤ 4 MB, mirando la cabecera `content-length` y los bytes reales (413) → **tipo real por la firma de los primeros bytes** (PNG o JPEG; no se confía en el nombre ni en el `content-type` que declara el navegador) (415) → la imagen **se puede decodificar** con `sharp` y no pasa de 40 millones de píxeles (415/413) → nombre final `procesos/<id>/<NNNN>-<nombre limpio>` **con la extensión del tipo real** → `put` en el Blob privado desde el servidor. Responde `{ pathname }`.
+5. Al terminar de subir, `iniciar` (Fase 6) lista el prefijo del lote con `list()`; no se depende de ningún aviso del almacén.
 
-**Por qué.** El cuerpo de una petición a una función no pasa de 4,5 MB, así que las imágenes van del navegador directo a Blob con un **token de un solo uso** que solo nuestro servidor puede emitir (y solo tras validar). Esto reemplaza al "explorador de carpetas del servidor" y elimina el riesgo de recorrer su disco, pero crea otro (gasto de cuota), y por eso la autenticación va antes.
+**Por qué.** La API es la **única** que habla con Blob: valida con las reglas del negocio, el navegador nunca recibe permisos sobre el almacén y un archivo que no sea una imagen válida jamás llega a él. **Contrapartida, dicha con claridad**: hay una invocación de función por imagen, y una petición no puede pasar de 4,5 MB en Vercel (por eso el tope de 4 MB; las facturas pesan ~100 KB y la mayor del conjunto del curso, 192 KB). Si algún día hubiera archivos de decenas de MB, esta decisión habría que reconsiderarla (la alternativa es la subida directa con un token de un solo uso, que evita el límite a cambio de entregar permisos al navegador).
 
-**Verificación.** Elegir la carpeta, subir 20 imágenes y ver en el panel de Blob los 20 archivos bajo `procesos/<id>/`. Además, el servidor debe **rechazar** una ruta fuera del lote (`procesos/otro/0001-x.png`), un archivo `.html` y cualquier petición sin sesión. Referencia: 1000 imágenes (108 MB) subieron en 89 s y el navegador no se bloqueó (retraso máximo del bucle de eventos de 2 ms).
+**Verificación.** Elegir la carpeta, subir 20 imágenes y ver en el panel de Blob los 20 archivos bajo `procesos/<id>/`. Además, el servidor debe **rechazar**: sin sesión (401), un texto con nombre `.png` (415), un archivo con firma PNG pero dañado (415), más de 4 MB (413), un lote inexistente o ajeno (404) y un índice inválido (400). Referencia (`scripts/probar-http.ts` hace todas estas comprobaciones): 1000 imágenes (108 MB) subieron en **78 s** y el navegador no se bloqueó (retraso máximo del bucle de eventos de 3 ms).
 
-**Errores típicos.** Botón de archivos invisible (input sin estilo); `Cannot find module` al ejecutar un script que importa `@vercel/blob` desde fuera del proyecto; esperar el aviso `upload-completed`.
+**Errores típicos.** Botón de archivos invisible (input sin estilo); olvidar el `content-type` o el índice en la petición; subir archivos de más de 4,5 MB y recibir el error de la plataforma antes de llegar a tu código; confiar en la extensión del archivo en vez de en sus bytes.
 
-**Pídele a tu IA.** "Muéstrame qué validaciones hace `onBeforeGenerateToken` y qué ataque evita cada una (por ejemplo, subir a la carpeta de otro usuario)."
+**Pídele a tu IA.** "Explícame por qué el tipo de un archivo se valida con sus primeros bytes y no con su extensión, y qué podría pasar si solo miráramos el nombre."
 
 ---
 

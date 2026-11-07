@@ -148,11 +148,11 @@ real. No avances de fase hasta que yo lo diga.</div>
   <span class="sobre">La arquitectura</span>
   <h2>Las piezas y cómo se hablan</h2>
   <div class="crece centrado">
-    <svg viewBox="0 -46 1152 516" width="1152" height="458" role="img" aria-label="Navegador, funciones de Vercel y servicios: Blob, Firestore y Firebase Auth">
+    <svg viewBox="0 0 1152 470" width="1152" height="458" role="img" aria-label="Navegador, funciones de Vercel y servicios: Blob, Firestore y Firebase Auth">
       <text x="150" y="14" class="t-s t-b t-m" text-anchor="middle">NAVEGADOR</text><text x="576" y="14" class="t-s t-b t-m" text-anchor="middle">FUNCIONES DE VERCEL (la API)</text><text x="1006" y="14" class="t-s t-b t-m" text-anchor="middle">SERVICIOS</text>
       <g class="paso inicio">
         <rect x="0" y="26" width="300" height="72" rx="12" class="caja azul"/><text x="150" y="58" class="t-s t-b" text-anchor="middle">Elegir carpeta y</text><text x="150" y="80" class="t-s t-b" text-anchor="middle">dividir en lotes</text>
-        <rect x="0" y="118" width="300" height="72" rx="12" class="caja azul"/><text x="150" y="150" class="t-s t-b" text-anchor="middle">Subir cada imagen</text><text x="150" y="172" class="t-s t-b" text-anchor="middle">(directo, sin la API)</text>
+        <rect x="0" y="118" width="300" height="72" rx="12" class="caja azul"/><text x="150" y="150" class="t-s t-b" text-anchor="middle">Subir cada imagen</text><text x="150" y="172" class="t-s t-b" text-anchor="middle">(a través de la API)</text>
         <rect x="0" y="210" width="300" height="72" rx="12" class="caja violeta"/><text x="150" y="242" class="t-s t-b" text-anchor="middle">Motor: 3 llamadas</text><text x="150" y="264" class="t-s t-b" text-anchor="middle">«lote» en paralelo</text>
         <rect x="0" y="302" width="300" height="72" rx="12" class="caja azul"/><text x="150" y="334" class="t-s t-b" text-anchor="middle">Ver métricas, tabla</text><text x="150" y="356" class="t-s t-b" text-anchor="middle">y descargar el Excel</text>
       </g>
@@ -162,7 +162,7 @@ real. No avances de fase hasta que yo lo diga.</div>
         <rect x="860" y="308" width="292" height="104" rx="12" class="caja violeta"/><text x="1006" y="346" class="t-b" text-anchor="middle">Firebase Auth</text><text x="1006" y="374" class="t-xs" text-anchor="middle">correo y contraseña</text><text x="1006" y="394" class="t-xs t-m" text-anchor="middle">cookie de sesión</text>
       </g>
       <g class="paso">
-        <rect x="430" y="26" width="290" height="52" rx="10" class="caja"/><text x="575" y="58" class="t-s t-b" text-anchor="middle">/api/blob/subir · emite token</text>
+        <rect x="430" y="26" width="290" height="52" rx="10" class="caja"/><text x="575" y="50" class="t-s t-b" text-anchor="middle">/procesos/…/imagenes</text><text x="575" y="68" class="t-xs t-m" text-anchor="middle">valida cada archivo y lo guarda</text>
         <rect x="430" y="96" width="290" height="52" rx="10" class="caja"/><text x="575" y="128" class="t-s t-b" text-anchor="middle">/procesos/…/iniciar · crea cola</text>
         <rect x="430" y="166" width="290" height="92" rx="10" class="caja azul"/><text x="575" y="200" class="t-s t-b" text-anchor="middle">/procesos/…/lote</text><text x="575" y="224" class="t-xs" text-anchor="middle">descarga → OCR → extrae →</text><text x="575" y="244" class="t-xs" text-anchor="middle">valida → guarda (transacción)</text>
         <rect x="430" y="276" width="290" height="52" rx="10" class="caja"/><text x="575" y="308" class="t-s t-b" text-anchor="middle">/procesos/…/finalizar · Excel</text>
@@ -173,15 +173,15 @@ real. No avances de fase hasta que yo lo diga.</div>
         <path class="flecha violeta punteada" d="M722 372 L858 360" style="stroke:var(--violeta)"/>
       </g>
       <g class="paso">
-        <path class="flecha ambar punteada" d="M302 154 C324 154 324 -26 400 -26 L700 -26 C820 -26 830 50 858 66" style="stroke-width:3"/>
-        <rect x="330" y="-44" width="310" height="26" rx="13" class="caja ambar" style="fill:var(--papel)"/><text x="485" y="-26" class="t-xs t-b" style="fill:var(--ambar)" text-anchor="middle">directo a Blob (sin pasar por la API)</text>
+        <path class="flecha azul" d="M302 154 L428 62"/><text x="338" y="96" class="t-xs t-b" style="fill:var(--acento)">1 imagen</text><text x="338" y="112" class="t-xs t-b" style="fill:var(--acento)">por petición</text>
+        <path class="flecha ambar" d="M722 50 L858 66"/>
         <rect x="430" y="420" width="722" height="40" rx="12" class="caja vacia"/><text x="791" y="446" class="t-s t-m" text-anchor="middle">todas las rutas exigen la sesión de Firebase Auth (cookie httpOnly)</text>
       </g>
     </svg>
   </div>
   <aside class="notas">
     <b>Mapa mental de todo el curso.</b> Recorre con →: primero navegador y servicios; luego las funciones que los conectan.<br>
-    <b>Tres ideas:</b> (1) las imágenes viajan <b>directo</b> del navegador a Blob; la API solo entrega un token de un solo uso. (2) El trabajo pesado (OCR, validar, guardar) ocurre en la función <code>lote</code>, que el motor del navegador llama tres veces en paralelo. (3) Firestore solo se toca desde el servidor; ningún navegador lo lee directamente.<br>
+    <b>Tres ideas:</b> (1) las imágenes pasan por <b>nuestra API</b>, una por petición: la API valida cada archivo (sesión, lote, tamaño, tipo real) y es la única que escribe en Blob; el navegador nunca habla con el almacén. (2) El trabajo pesado (OCR, validar, guardar) ocurre en la función <code>lote</code>, que el motor del navegador llama tres veces en paralelo. (3) Firestore solo se toca desde el servidor; ningún navegador lo lee directamente.<br>
     Vuelve a la anatomía de la primera presentación: el disparador es el botón, la entrada son las imágenes, las reglas están en <code>lote</code>, el registro es Firestore.
   </aside>
 </section>
@@ -194,8 +194,8 @@ real. No avances de fase hasta que yo lo diga.</div>
       <text x="260" y="16" class="t-s t-b t-m" text-anchor="middle">RESTRICCIÓN</text><text x="860" y="16" class="t-s t-b t-m" text-anchor="middle">DECISIÓN DE DISEÑO</text>
       <g class="paso inicio"><rect x="0" y="30" width="520" height="86" rx="12" class="caja rojo"/><use href="#ico-reloj" x="14" y="48" width="48" height="48" style="color: var(--rojo)"/><text x="76" y="64" class="t-b">Funciones efímeras</text><text x="76" y="92" class="t-s">máximo 300 s por invocación</text>
         <path class="flecha" d="M522 73 H576"/><rect x="580" y="30" width="572" height="86" rx="12" class="caja verde"/><text x="600" y="64" class="t-b">Lotes pequeños e idempotentes</text><text x="600" y="92" class="t-s">el estado vive en la base de datos; el motor pide más</text></g>
-      <g class="paso"><rect x="0" y="136" width="520" height="86" rx="12" class="caja rojo"/><use href="#ico-documento" x="14" y="154" width="48" height="48" style="color: var(--rojo)"/><text x="76" y="170" class="t-b">Cuerpo de petición ≤ 4,5 MB</text><text x="76" y="198" class="t-s">una imagen grande no cabe en la API</text>
-        <path class="flecha" d="M522 179 H576"/><rect x="580" y="136" width="572" height="86" rx="12" class="caja verde"/><text x="600" y="170" class="t-b">Subida directa a Blob con token</text><text x="600" y="198" class="t-s">la API solo valida y emite el permiso</text></g>
+      <g class="paso"><rect x="0" y="136" width="520" height="86" rx="12" class="caja rojo"/><use href="#ico-documento" x="14" y="154" width="48" height="48" style="color: var(--rojo)"/><text x="76" y="170" class="t-b">Cuerpo de petición ≤ 4,5 MB</text><text x="76" y="198" class="t-s">una sola petición no puede traer 1000 imágenes</text>
+        <path class="flecha" d="M522 179 H576"/><rect x="580" y="136" width="572" height="86" rx="12" class="caja verde"/><text x="600" y="170" class="t-b">Una imagen por petición (≤ 4 MB)</text><text x="600" y="198" class="t-s">la API valida cada archivo y lo guarda en Blob</text></g>
       <g class="paso"><rect x="0" y="242" width="520" height="86" rx="12" class="caja rojo"/><use href="#ico-candado" x="14" y="260" width="48" height="48" style="color: var(--rojo)"/><text x="76" y="276" class="t-b">Disco de solo lectura</text><text x="76" y="304" class="t-s">no se puede guardar nada en el servidor</text>
         <path class="flecha" d="M522 285 H576"/><rect x="580" y="242" width="572" height="86" rx="12" class="caja verde"/><text x="600" y="276" class="t-b">Blob + Firestore para todo lo persistente</text><text x="600" y="304" class="t-s">incluido el Excel, que se descarga desde Blob</text></g>
       <g class="paso"><rect x="0" y="348" width="520" height="86" rx="12" class="caja rojo"/><use href="#ico-engranaje" x="14" y="366" width="48" height="48" style="color: var(--rojo)"/><text x="76" y="382" class="t-b">1 vCPU en el plan Hobby</text><text x="76" y="410" class="t-s">un pool de hilos propio no acelera</text>
@@ -489,27 +489,27 @@ CLIENTE: Corporación Montoya Luevano
 
 <section class="slide" id="fase-3">
   <span class="sobre">Fase 3 · Subida de la carpeta a Blob</span>
-  <h2>El navegador sube directo; el servidor da permiso</h2>
-  <svg viewBox="0 0 1152 330" width="1152" height="320" role="img" aria-label="Secuencia: pedir token, validar, subir directo a Blob">
+  <h2>Cada imagen pasa por la API, que la valida y la guarda</h2>
+  <svg viewBox="0 0 1152 330" width="1152" height="320" role="img" aria-label="Secuencia: el navegador envía una imagen a la API, que valida y la guarda en Blob">
     <rect x="40" y="0" width="200" height="44" rx="10" class="caja azul"/><text x="140" y="29" class="t-b" text-anchor="middle">Navegador</text>
-    <rect x="470" y="0" width="200" height="44" rx="10" class="caja verde"/><text x="570" y="29" class="t-b" text-anchor="middle">Servidor</text>
+    <rect x="470" y="0" width="200" height="44" rx="10" class="caja verde"/><text x="570" y="29" class="t-b" text-anchor="middle">Nuestra API</text>
     <rect x="900" y="0" width="200" height="44" rx="10" class="caja ambar"/><text x="1000" y="29" class="t-b" text-anchor="middle">Vercel Blob</text>
     <path class="linea punteada fina" d="M140 44 V330 M570 44 V330 M1000 44 V330"/>
-    <g class="paso inicio"><path class="flecha azul" d="M142 84 H566"/><text x="354" y="74" class="t-xs t-b" text-anchor="middle">1 · pido permiso para procesos/&lt;lote&gt;/0001-factura.png</text></g>
-    <g class="paso"><rect x="372" y="100" width="396" height="66" rx="10" class="caja ambar"/><text x="570" y="124" class="t-xs t-b" text-anchor="middle">2 · valida: sesión · lote propio en «subiendo»</text><text x="570" y="144" class="t-xs t-b" text-anchor="middle">ruta del lote · PNG o JPG · máx. 8 MB</text></g>
-    <g class="paso"><path class="flecha verde" d="M568 196 H144"/><text x="356" y="186" class="t-xs t-b" text-anchor="middle">3 · token de un solo uso</text></g>
-    <g class="paso"><path class="flecha azul" d="M142 246 H996"/><text x="569" y="236" class="t-xs t-b" text-anchor="middle">4 · subo la imagen directo, sin pasar por la API</text></g>
-    <g class="paso"><path class="flecha ambar" d="M998 296 H144"/><text x="571" y="286" class="t-xs t-b" text-anchor="middle">5 · listo (el servidor no espera este aviso: luego lista el lote)</text></g>
+    <g class="paso inicio"><path class="flecha azul" d="M142 84 H566"/><text x="354" y="74" class="t-xs t-b" text-anchor="middle">1 · POST …/imagenes?indice=1  (los bytes de UNA imagen)</text></g>
+    <g class="paso"><rect x="250" y="100" width="640" height="84" rx="10" class="caja ambar"/><text x="570" y="124" class="t-xs t-b" text-anchor="middle">2 · valida, en este orden: sesión · lote propio en «subiendo» · tamaño ≤ 4 MB</text><text x="570" y="146" class="t-xs t-b" text-anchor="middle">tipo REAL por los primeros bytes (PNG o JPG) · la imagen se puede leer</text><text x="570" y="168" class="t-xs t-m" text-anchor="middle">si algo falla: 401, 404, 413 o 415 con el motivo, y no se guarda nada</text></g>
+    <g class="paso"><path class="flecha ambar" d="M572 214 H996"/><text x="784" y="204" class="t-xs t-b" text-anchor="middle">3 · el servidor guarda la imagen (put privado)</text></g>
+    <g class="paso"><path class="flecha verde" d="M998 254 H574"/><text x="786" y="244" class="t-xs t-b" text-anchor="middle">listo</text><path class="flecha verde" d="M568 296 H144"/><text x="356" y="286" class="t-xs t-b" text-anchor="middle">4 · { pathname }  (el navegador nunca habló con Blob)</text></g>
   </svg>
   <div class="cols3">
-    <div class="card azul paso"><h3>6 a la vez</h3><p class="peq">seis subidas concurrentes por lote</p></div>
-    <div class="card verde paso"><h3>3 reintentos</h3><p class="peq">con espera creciente, por archivo</p></div>
-    <div class="card ambar paso"><h3>Un fallo no detiene</h3><p class="peq">queda en una lista para «Reintentar esos archivos»</p></div>
+    <div class="card azul paso"><h3>6 a la vez</h3><p class="peq">seis peticiones concurrentes por lote</p></div>
+    <div class="card verde paso"><h3>3 reintentos</h3><p class="peq">solo ante fallas de red o 5xx</p></div>
+    <div class="card ambar paso"><h3>Un rechazo no se reintenta</h3><p class="peq">el archivo es el problema: queda en una lista con su motivo</p></div>
   </div>
   <aside class="notas">
-    <b>Por qué directo:</b> el cuerpo de una petición a una función de Vercel no pasa de 4,5 MB; además, así el servidor no gasta tiempo moviendo bytes. El servidor solo valida y emite un <b>token de un solo uso</b>.<br>
-    <b>Validaciones del paso 2</b> (cada una evita un ataque): sesión (sin login no hay token); lote propio y en estado «subiendo» (no se sube al lote de otro ni a uno cerrado); ruta del lote (no se escribe en cualquier lugar del almacén); tipo y tamaño (no se suben ejecutables ni archivos enormes).<br>
-    <b>Medido:</b> 1000 imágenes (108 MB) subieron en 89 s sin bloquear el navegador. <b>Detalle práctico:</b> el selector de carpeta se envuelve en un botón visible; un input de archivos sin estilo parece solo texto.
+    <b>Decisión de arquitectura:</b> las imágenes pasan por <b>nuestra API</b>. Así el servidor aplica las reglas del negocio antes de guardar nada, y el navegador nunca recibe permisos sobre el almacén.<br>
+    <b>Validaciones del paso 2</b> (cada una evita un ataque): sesión (sin login no se sube nada); lote propio y en estado «subiendo» (no se sube al lote de otro ni a uno cerrado); tamaño (no se llena el almacén con archivos enormes); <b>tipo real por los bytes</b> (un archivo malicioso renombrado a .png se rechaza: el nombre no prueba nada); imagen legible (no se guardan archivos dañados).<br>
+    <b>La contrapartida:</b> una invocación de función por imagen y un tope de tamaño (4 MB, porque una petición no puede pasar de 4,5 MB en Vercel). Las facturas pesan ~100 KB (la mayor, 192 KB), así que sobra margen; con archivos de decenas de MB habría que reconsiderarlo.<br>
+    <b>Medido:</b> 1000 imágenes (108 MB) subieron en 78 s sin bloquear el navegador. <b>Detalle práctico:</b> el selector de carpeta se envuelve en un botón visible; un input de archivos sin estilo parece solo texto.
   </aside>
 </section>
 

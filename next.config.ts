@@ -28,7 +28,7 @@ const nextConfig: NextConfig = {
   // require() dinámico: el trazador no las ve y, sin ellas, el hilo muere en silencio y la función se
   // cuelga hasta el 504 (así falló en Vercel), o falla con "Cannot find module".
   outputFileTracingIncludes: {
-    "/api/procesos/**": OCR_ARCHIVOS,
+    "/api/procesos/*/lote": OCR_ARCHIVOS,
     "/api/salud": OCR_ARCHIVOS,
   },
   turbopack: {

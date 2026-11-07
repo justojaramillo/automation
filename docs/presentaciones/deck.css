@@ -161,9 +161,7 @@ svg .relleno.muted { fill: var(--muted); }
 svg .relleno.linea { fill: var(--linea); }
 svg .papel { fill: var(--papel); stroke: var(--linea); stroke-width: 2.5; }
 
-svg .gira { animation: gira 16s linear infinite; transform-box: fill-box; transform-origin: center; }
-@keyframes gira { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { svg .gira { animation: none; } .slide.activa { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .slide.activa { animation: none; } }
 
 /* Interfaz del reproductor */
 #barra { position: fixed; left: 0; right: 0; bottom: 0; height: 5px; background: transparent; z-index: 10; }

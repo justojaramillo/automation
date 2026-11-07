@@ -31,6 +31,20 @@ describe("presentaciones HTML", () => {
     expect(existsSync(path.join(base, "deck.js"))).toBe(true);
   });
 
+  it("las tuercas giran sobre su centro con animateTransform (no con CSS sobre <use>, que las desplazaba)", () => {
+    for (const html of Object.values(generadas)) {
+      expect(html).not.toContain('class="gira"');
+      for (const g of html.match(/<g class="tuerca">[\s\S]*?<\/g>/g) ?? []) {
+        const x = Number(g.match(/ x="([\d.]+)"/)?.[1]), y = Number(g.match(/ y="([\d.]+)"/)?.[1]);
+        const w = Number(g.match(/ width="([\d.]+)"/)?.[1]), h = Number(g.match(/ height="([\d.]+)"/)?.[1]);
+        const centro = g.match(/from="0 ([\d.]+) ([\d.]+)"/);
+        expect(centro, "falta animateTransform").not.toBeNull();
+        expect(Number(centro![1])).toBeCloseTo(x + w / 2, 1);
+        expect(Number(centro![2])).toBeCloseTo(y + h / 2, 1);
+      }
+    }
+  });
+
   it("no cargan nada de internet (funcionan sin conexión)", () => {
     const todos = [...Object.values(generadas), readFileSync(path.join(base, "index.html"), "utf8"), readFileSync(path.join(base, "deck.css"), "utf8"), readFileSync(path.join(base, "deck.js"), "utf8")].join("\n");
     expect(todos).not.toMatch(/(?:src|href)="https?:\/\//);

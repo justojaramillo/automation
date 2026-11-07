@@ -5,10 +5,9 @@
 // motor (en segundo plano) ya procesa los anteriores. Un archivo que falla no detiene nada: se reintenta
 // y, si sigue fallando, queda en una lista para reintentarlo después.
 
-import { upload } from "@vercel/blob/client";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { EXTENSIONES_IMAGEN, pathnameDeSubida } from "@/lib/rutas";
+import { EXTENSIONES_IMAGEN } from "@/lib/rutas";
 import { dormir, num } from "./formato";
 import { ResumenEnVivo, procesadasDe } from "./ResumenEnVivo";
 import { IconoMal, IconoOk, Girando, Progreso, botonPrimario, botonSecundario } from "./ui";
@@ -20,17 +19,27 @@ const TAMANO_LOTE_POR_DEFECTO = 100;
 
 const mb = (bytes: number) => (bytes / 1024 / 1024).toLocaleString("es-CO", { maximumFractionDigits: 1 });
 
-async function conReintentos<T>(tarea: () => Promise<T>): Promise<T> {
-  let ultimo: unknown;
-  for (let i = 0; i < REINTENTOS; i++) {
+/** El servidor rechazó el archivo (no es imagen, pesa demasiado…): reintentar no sirve. */
+class Rechazo extends Error {}
+
+async function subirImagen(id: string, indice: number, f: File): Promise<void> {
+  const tipo = f.type || (/\.png$/i.test(f.name) ? "image/png" : "image/jpeg");
+  const url = `/api/procesos/${id}/imagenes?indice=${indice}&nombre=${encodeURIComponent(f.name)}`;
+  let ultimo = "error de red";
+  for (let intento = 0; intento < REINTENTOS; intento++) {
     try {
-      return await tarea();
+      const r = await fetch(url, { method: "POST", headers: { "content-type": tipo }, body: f });
+      if (r.ok) return;
+      const mensaje = ((await r.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${r.status}`;
+      if (r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429) throw new Rechazo(mensaje);
+      ultimo = mensaje;
     } catch (e) {
-      ultimo = e;
-      await dormir(500 * 2 ** i);
+      if (e instanceof Rechazo) throw e;
+      ultimo = e instanceof Error ? e.message : ultimo;
     }
+    await dormir(500 * 2 ** intento);
   }
-  throw ultimo;
+  throw new Error(ultimo);
 }
 
 interface LoteUI {
@@ -53,7 +62,9 @@ export function NuevoProceso() {
   const [terminoSubida, setTerminoSubida] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fallidosRef = useRef<File[]>([]);
+  const motivosRef = useRef<string[]>([]);
   const [hayFallidos, setHayFallidos] = useState(0);
+  const [motivos, setMotivos] = useState<string[]>([]);
   const ocupado = useRef(false);
 
   const idsSesion = useMemo(() => new Set(lotes.map((l) => l.id).filter((x): x is string => Boolean(x))), [lotes]);
@@ -93,13 +104,12 @@ export function NuevoProceso() {
         const k = siguiente++;
         const f = trozo[k];
         try {
-          await conReintentos(() =>
-            upload(pathnameDeSubida(id, k + 1, f.name), f, { access: "private", handleUploadUrl: "/api/blob/subir", contentType: f.type || undefined }),
-          );
+          await subirImagen(id, k + 1, f);
           subidos++;
-        } catch {
+        } catch (e) {
           fallidos++;
           fallidosRef.current.push(f);
+          motivosRef.current.push(`${f.name}: ${e instanceof Error ? e.message : "error"}`);
         }
         parche(i, { subidos, fallidos });
       }
@@ -120,7 +130,9 @@ export function NuevoProceso() {
     setSubiendo(true);
     setTerminoSubida(false);
     fallidosRef.current = [];
+    motivosRef.current = [];
     setHayFallidos(0);
+    setMotivos([]);
     const t = tam > 0 ? tam : lista.length;
     const trozos: File[][] = [];
     for (let k = 0; k < lista.length; k += t) trozos.push(lista.slice(k, k + t));
@@ -140,6 +152,7 @@ export function NuevoProceso() {
       }
     } finally {
       setHayFallidos(fallidosRef.current.length);
+      setMotivos(motivosRef.current.slice(0, 3));
       setSubiendo(false);
       setTerminoSubida(true);
       ocupado.current = false;
@@ -250,7 +263,10 @@ export function NuevoProceso() {
 
           {terminoSubida && hayFallidos > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-md border border-aviso p-3 text-sm">
-              <span>{num(hayFallidos)} archivos no se pudieron subir tras {REINTENTOS} intentos.</span>
+              <span>
+                {num(hayFallidos)} archivos no se pudieron subir.
+                {motivos.length > 0 && <span className="mt-1 block text-xs text-texto2">Por ejemplo: {motivos.join(" · ")}</span>}
+              </span>
               <button className={botonSecundario} onClick={() => empezar([...fallidosRef.current], `${carpeta} (reintento)`)}>Reintentar esos archivos</button>
             </div>
           )}
