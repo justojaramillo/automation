@@ -7,18 +7,19 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";
 import { AggregateField, Timestamp } from "firebase-admin/firestore";
-import { del, get, list, put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 
 try { process.loadEnvFile(".env"); } catch { /* sin .env */ }
 
 import { firestore } from "../src/lib/firebase/admin";
 import { pathnameDeSubida } from "../src/lib/rutas";
-import { COLECCIONES, type Factura, type Proceso } from "../src/lib/modelo/tipos";
+import { COLECCIONES, type Proceso } from "../src/lib/modelo/tipos";
 import { iniciarProceso } from "../src/lib/procesamiento/iniciar";
 import { finalizarProceso } from "../src/lib/procesamiento/finalizar";
 import { procesarLote, type ResumenLote } from "../src/lib/procesamiento/lote";
 import { calcularAvance } from "../src/lib/procesamiento/avance";
 import { refProceso } from "../src/lib/procesamiento/proceso";
+import { limpiarLotes } from "./limpiar-lotes";
 
 const UID = "prueba-pipeline";
 const CONCURRENCIA = 3;
@@ -46,26 +47,6 @@ async function ejecutarProceso(nombre: string, carpeta: string, archivos: string
   const fin = await finalizarProceso(id);
   console.log(`[${nombre}] procesado en ${segundos.toFixed(1)} s, finalizar:`, JSON.stringify(fin));
   return { id, lotes, segundos };
-}
-
-async function limpiar(ids: string[]): Promise<void> {
-  const db = firestore();
-  for (const id of ids) {
-    const f = await db.collection(COLECCIONES.facturas).where("procesoId", "==", id).get();
-    for (const d of f.docs) {
-      const x = d.data() as Factura;
-      if (x.numero) await db.collection(COLECCIONES.indicesNumero).doc(x.numero).delete();
-      if (x.clienteDocumento) await db.collection(COLECCIONES.clientes).doc(x.clienteDocumento).delete();
-      await d.ref.delete();
-    }
-    await db.recursiveDelete(refProceso(id));
-    for (let c: string | undefined; ;) {
-      const p = await list({ prefix: `procesos/${id}/`, cursor: c });
-      if (p.blobs.length) await del(p.blobs.map((b) => b.pathname));
-      if (!p.hasMore) break;
-      c = p.cursor;
-    }
-  }
 }
 
 async function main(): Promise<void> {
@@ -113,7 +94,7 @@ async function main(): Promise<void> {
     console.log(`\n== Reproceso B (mismas imágenes, otra ruta) ==\nduplicadas ${avanceB.duplicadas} de ${archivos.length} | facturas ${antesF} → ${despuesF} | clientes ${antesC} → ${despuesC} → ${despuesF === antesF && despuesC === antesC ? "IDEMPOTENTE (no se duplicó nada)" : "¡SE DUPLICÓ ALGO!"}`);
   } finally {
     if (conservar) console.log("\n--conservar: no se limpia. Procesos:", ids.join(", "));
-    else { await limpiar(ids); console.log("\nDatos de prueba eliminados de Firestore y Blob."); }
+    else { await limpiarLotes(ids); console.log("\nDatos de prueba eliminados de Firestore y Blob."); }
   }
   process.exit(0);
 }

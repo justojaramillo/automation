@@ -15,6 +15,7 @@ import { corregirFactura } from "../src/lib/procesamiento/corregir";
 import { guardarFactura, guardarFallo } from "../src/lib/procesamiento/guardar";
 import { calcularTasas, sumarMetricas } from "../src/lib/procesamiento/metricas";
 import { refProceso } from "../src/lib/procesamiento/proceso";
+import { calcularDv } from "../src/lib/ocr/nit";
 import type { ParcialFactura } from "../src/lib/ocr/tipos";
 import { limpiarLotes } from "./limpiar-lotes";
 
@@ -47,6 +48,11 @@ async function main(): Promise<void> {
   if (previas > 0) { console.error("Ya existen clientes de estas facturas en la base: la prueba sería ambigua. Abortando."); process.exit(1); }
   const proceso: Proceso = { uid: UID, carpeta: "prueba-correccion", estado: "terminado", totalArchivos: 3, inicio: Timestamp.now(), fin: Timestamp.now(), rutaExcel: null };
   const procesoId = (await db.collection(COLECCIONES.procesos).add(proceso)).id;
+  // Datos de OTRO lote con los que esta prueba colisiona a propósito (mismo número y mismo cliente): el limpiador no debe tocarlos.
+  const NUMERO_AJENO = "FE-999777";
+  const DOC_AJENO = "999888777";
+  await db.collection(COLECCIONES.indicesNumero).doc(NUMERO_AJENO).set({ hashArchivo: "hash-de-otro-lote" });
+  await db.collection(COLECCIONES.clientes).doc(DOC_AJENO).set({ documento: DOC_AJENO, dv: calcularDv(DOC_AJENO), nombre: "Cliente de otro lote", creadoEn: Timestamp.now(), primerProcesoId: "otro-lote" });
   try {
     // Preparación: 3 archivos en la cola. A: error del OCR (factura vacía) · B: en revisión con datos parciales · C: aceptada por la máquina.
     const hashes = { a: sha(`a-${procesoId}`), b: sha(`b-${procesoId}`), c: sha(`c-${procesoId}`) };
@@ -115,9 +121,24 @@ async function main(): Promise<void> {
     chequear("se guarda", r.ok, JSON.stringify(r));
     chequear("el índice viejo se borró y el nuevo apunta a la factura", !(await db.collection(COLECCIONES.indicesNumero).doc(v1.numero).get()).exists && (await db.collection(COLECCIONES.indicesNumero).doc(nuevoNumero).get()).data()?.hashArchivo === hashes.a);
     await db.collection(COLECCIONES.indicesNumero).doc(nuevoNumero).delete(); // lo creó esta prueba: el limpiador no lo conoce
+
+    console.log("\n8. Una factura de este lote choca con un número y un cliente de OTRO lote");
+    const hashD = sha(`d-${procesoId}`);
+    await colaArchivos(procesoId).doc("d.png").set(archivo("d.png"));
+    await guardarFactura({ ...base, archivoId: "d.png", hash: hashD, parcial: { ...parcialDe(v1, false), numero: NUMERO_AJENO, clienteDocumento: DOC_AJENO, clienteDv: calcularDv(DOC_AJENO) }, motivos: [], confianza: 90 });
+    const fd = await factura(hashD);
+    chequear("queda en revisión por «número repetido» y no usa el índice ajeno", fd.estado === "revision" && fd.motivos.some((m) => /ya existe en otra factura/.test(m)));
+    chequear("el cliente ajeno no se toca (no es «nuevo» para este lote)", (await db.collection(COLECCIONES.clientes).doc(DOC_AJENO).get()).data()?.primerProcesoId === "otro-lote");
   } finally {
     await limpiarLotes([procesoId]);
     console.log("\nDatos de prueba eliminados.");
+    console.log("9. El limpiador respeta lo que es de otros lotes");
+    const indiceAjeno = await db.collection(COLECCIONES.indicesNumero).doc(NUMERO_AJENO).get();
+    const clienteAjeno = await db.collection(COLECCIONES.clientes).doc(DOC_AJENO).get();
+    chequear("NO borró el índice de número de otro lote", indiceAjeno.exists && indiceAjeno.data()?.hashArchivo === "hash-de-otro-lote");
+    chequear("NO borró el cliente de otro lote", clienteAjeno.exists);
+    await db.collection(COLECCIONES.indicesNumero).doc(NUMERO_AJENO).delete(); // creados por esta prueba
+    await db.collection(COLECCIONES.clientes).doc(DOC_AJENO).delete();
   }
   console.log(fallos === 0 ? "\nTODO OK" : `\n${fallos} comprobación(es) fallaron`);
   process.exit(fallos === 0 ? 0 : 1);

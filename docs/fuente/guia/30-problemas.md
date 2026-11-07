@@ -23,4 +23,5 @@ Todos ocurrieron de verdad construyendo este proyecto. Si ves el síntoma, empie
 | `next dev` modifica `AGENTS.md` | Next mantiene su bloque `BEGIN:nextjs-agent-rules` | Dejar el bloque y commitearlo con tu trabajo |
 | Lint: `react-hooks/set-state-in-effect` o `purity` | `setState` síncrono en un efecto, o `Date.now()` al renderizar | Mover la llamada a un callback/`async` o a un estado actualizado por eventos |
 | Playwright: `strict mode violation … resolved to 2 elements` (`main`) | Durante la navegación coexisten la página vieja y la nueva | Selector más específico (por texto o `nth`) |
+| Un lote «perdió» sus índices de número tras correr una prueba | El limpiador de la prueba borraba `indices_numero/{número}` de sus facturas sin mirar de quién era el índice (otro conjunto con la misma numeración) | Borrar el índice solo si su `hashArchivo` es el de la factura del lote, y el cliente solo si `primerProcesoId` es el lote (`scripts/limpiar-lotes.ts`); recrear los índices que falten |
 | Un script fuera del proyecto dice `Cannot find module '@vercel/blob'` | Node resuelve módulos desde la carpeta del script | Mantener los scripts dentro de `scripts/` |

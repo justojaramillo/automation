@@ -4,12 +4,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";
-import { del, list } from "@vercel/blob";
 
 try { process.loadEnvFile(".env"); } catch { /* sin .env */ }
-import { firestore } from "../src/lib/firebase/admin";
-import { COLECCIONES, type Factura } from "../src/lib/modelo/tipos";
-import { refProceso } from "../src/lib/procesamiento/proceso";
+import { limpiarLotes } from "./limpiar-lotes";
 
 async function main(): Promise<void> {
   const [base, carpeta, cantidadArg] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -105,19 +102,7 @@ async function main(): Promise<void> {
   } finally {
     if (conservar) { console.log("--conservar: proceso", id); }
     else {
-      const db = firestore();
-      for (const d of (await db.collection(COLECCIONES.facturas).where("procesoId", "==", id).get()).docs) {
-        const f = d.data() as Factura;
-        if (f.numero) await db.collection(COLECCIONES.indicesNumero).doc(f.numero).delete();
-        if (f.clienteDocumento) await db.collection(COLECCIONES.clientes).doc(f.clienteDocumento).delete();
-        await d.ref.delete();
-      }
-      await db.recursiveDelete(refProceso(id));
-      for (let c: string | undefined; ;) {
-        const p = await list({ prefix: `procesos/${id}/`, cursor: c });
-        if (p.blobs.length) await del(p.blobs.map((b) => b.pathname));
-        if (!p.hasMore) break; c = p.cursor;
-      }
+      await limpiarLotes([id]); // limpiador seguro: solo lo que pertenece a este lote
       console.log("Datos de prueba eliminados.");
     }
   }
