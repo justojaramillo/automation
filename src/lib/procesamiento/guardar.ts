@@ -10,6 +10,7 @@ import { COLECCIONES, TERMINADO, type Cliente, type Factura, type ResultadoArchi
 import { dvValido } from "@/lib/ocr/nit";
 import type { ParcialFactura } from "@/lib/ocr/tipos";
 import { colaArchivos } from "./cola";
+import { aplicarMetricas } from "./metricas-firestore";
 
 export interface EntradaGuardado {
   procesoId: string;
@@ -43,6 +44,7 @@ export async function guardarFactura(e: EntradaGuardado): Promise<ResultadoArchi
     // Mismo archivo ya guardado (reprocesar la misma carpeta): no se duplica nada.
     if (sFactura.exists) {
       tx.update(refArchivo, { estado: "ok", resultado: "duplicada", clienteNuevo: false, clienteExistente: false, hashArchivo: e.hash, error: null, disponibleDesde: TERMINADO });
+      aplicarMetricas(tx, e.procesoId, { tipo: "duplicada" });
       return "duplicada";
     }
 
@@ -96,6 +98,10 @@ export async function guardarFactura(e: EntradaGuardado): Promise<ResultadoArchi
     tx.create(refFactura, factura);
     if (indexar && refIndice) tx.create(refIndice, { hashArchivo: e.hash });
     tx.update(refArchivo, { estado: "ok", resultado: estado, clienteNuevo, clienteExistente: Boolean(sCliente?.exists), hashArchivo: e.hash, error: null, disponibleDesde: TERMINADO });
+    aplicarMetricas(tx, e.procesoId, {
+      tipo: "factura", estado, subtotal: p.subtotal, iva: p.iva, impoconsumo: p.impoconsumo ?? 0, total: p.total,
+      clienteNuevo, nitProveedor: p.nitProveedor, proveedor: p.proveedor,
+    });
     return estado;
   });
 }
@@ -116,6 +122,7 @@ export async function guardarFallo(e: Omit<EntradaGuardado, "parcial" | "motivos
         creadoEn: Timestamp.now(), items: [],
       };
       tx.create(refFactura, factura);
+      aplicarMetricas(tx, e.procesoId, { tipo: "error" });
     }
     tx.update(refArchivo, { estado: "error", resultado: "error", clienteNuevo: false, hashArchivo: e.hash, error: e.error, disponibleDesde: TERMINADO });
   });
@@ -132,6 +139,7 @@ export async function marcarDuplicadaSiExiste(procesoId: string, archivoId: stri
   return db.runTransaction(async (tx) => {
     if (!(await tx.get(refFactura)).exists) return false;
     tx.update(refArchivo, { estado: "ok", resultado: "duplicada", clienteNuevo: false, clienteExistente: false, hashArchivo: hash, error: null, disponibleDesde: TERMINADO });
+    aplicarMetricas(tx, procesoId, { tipo: "duplicada" });
     return true;
   });
 }

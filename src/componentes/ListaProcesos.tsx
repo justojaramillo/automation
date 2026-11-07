@@ -1,35 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { fechaHora, num } from "./formato";
+import { useMetricas } from "./useMetricas";
 
-interface Item {
-  id: string;
-  carpeta: string;
-  estado: string;
-  totalArchivos: number;
-  inicio: number;
-}
-
+/** Lotes anteriores (con su número, fecha y avance). Usa los mismos datos baratos que el panel de métricas. */
 export function ListaProcesos() {
-  const [procesos, setProcesos] = useState<Item[] | null>(null);
+  const { datos, refrescar } = useMetricas(null);
   useEffect(() => {
-    fetch("/api/procesos")
-      .then((r) => (r.ok ? r.json() : { procesos: [] }))
-      .then((d: { procesos: Item[] }) => setProcesos(d.procesos))
-      .catch(() => setProcesos([]));
-  }, []);
-  if (!procesos?.length) return null;
+    const alBorrar = () => void refrescar();
+    window.addEventListener("datos-borrados", alBorrar);
+    return () => window.removeEventListener("datos-borrados", alBorrar);
+  }, [refrescar]);
+  const lotes = [...(datos?.lotes ?? [])].reverse();
+  if (lotes.length === 0) return null;
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-lg font-semibold">Procesos anteriores</h2>
-      <ul className="flex flex-col gap-1 text-sm">
-        {procesos.map((p) => (
-          <li key={p.id}>
-            <Link className="underline" href={`/procesos/${p.id}`}>
-              {new Date(p.inicio).toLocaleString("es-CO")} — {p.carpeta}
-            </Link>{" "}
-            <span className="opacity-60">({p.totalArchivos} archivos, {p.estado})</span>
+    <section className="flex flex-col gap-2 rounded-lg border border-borde bg-superficie p-5">
+      <h2 className="text-lg font-semibold">Lotes anteriores</h2>
+      <ul className="flex flex-col divide-y divide-borde text-sm">
+        {lotes.map((l) => (
+          <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <Link className="font-medium underline" href={`/procesos/${l.id}`}>Lote {l.numero} · {l.carpeta}</Link>
+            <span className="cifra text-texto2">{fechaHora(l.inicio)} · {num(l.totalArchivos)} facturas · {l.estado === "terminado" ? "terminado" : "procesando"}</span>
           </li>
         ))}
       </ul>

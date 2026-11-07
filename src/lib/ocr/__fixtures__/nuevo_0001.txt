@@ -1,0 +1,20 @@
+Suministros de Oficina Velázquez Santana FACTURA ELECTRÓNICA DE
+S.A.S. VENTA
+NIT: 840.166.815-6 No. FE-000052
+Responsable de IVA
+Calle 76 4 16-35, Manizales
+Tel. 605 6863796
+Resolución DIAN No. 18764891827592 del 09/01/2026. Prefijo FE, rango del FE-000001 al FE-005000.
+Fecha de emisión: 11/07/2026 19:35:53 Fecha de vencimiento: 10/08/2026
+Forma de pago: Crédito 30 días Medio de pago: Transferencia débito bancaria
+Adquirente: Comercializadora Melgar Fierro Ltda. NIT/CC: 805.024.350-7
+[e] pss [me | leamos | we [valen]
+Marcadores borrables para tablero x 4 colores $8.500 $25.500
+Caja de bolígrafos tinta negra x 12 unidades $10.800 $118.800
+3 | Block de notas adhesivas x 12 paquetes de 11 $17.000 19% $187.000
+colores
+Valor antes de IVA $331.300
+IVA 19% $62.947
+TOTAL A PAGAR $394.247
+CUFE: 3565eb8db0c9c35a775fbd98d2030b88727e50204ee77132ae201618f9aS1afcbeebbfc1b6f47d347ca76c55842179d3
+Representación gráfica de factura electrónica de venta. Documento sintético con datos ficticios para fines académicos.

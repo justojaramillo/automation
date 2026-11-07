@@ -28,6 +28,17 @@ describe("facturas reales (texto del OCR de los 4 diseños)", () => {
   }
 });
 
+describe("razón social partida con el título de la factura (textos reales de otra semilla)", () => {
+  it('"…FACTURA ELECTRÓNICA DE / S.A.S. VENTA": une las dos líneas y quita el título', () => {
+    const p = extraer(readFileSync(path.join(dir, "nuevo_0001.txt"), "utf8"));
+    expect(p.proveedor).toBe("Suministros de Oficina Velázquez Santana S.A.S.");
+  });
+  it('"S.A.S. q" (ruido del título detrás del sufijo): antepone la línea anterior', () => {
+    const p = extraer(readFileSync(path.join(dir, "nuevo_0007.txt"), "utf8"));
+    expect(p.proveedor).toBe("Suministros de Oficina Velázquez Santana S.A.S.");
+  });
+});
+
 describe("lección: normalizar el texto del OCR", () => {
   it("une `$496 .000` en `$496.000`", () => {
     expect(normalizarTexto("Total $496 .000")).toBe("Total $496.000");

@@ -9,13 +9,13 @@ export async function GET(request: NextRequest) {
   const usuario = await exigirUsuario(request);
   if (usuario instanceof Response) return usuario;
 
-  // Un solo campo en el filtro: no hace falta índice compuesto; se ordena en memoria.
-  const consulta = await firestore()
-    .collection(COLECCIONES.procesos)
-    .where("uid", "==", usuario.uid)
-    .limit(50)
-    .get();
-  const procesos = consulta.docs
+  // Solo filtros de igualdad: no hace falta índice compuesto; se ordena en memoria.
+  // `?estado=ejecutando` lo usa el motor de procesamiento (así solo lee los lotes activos).
+  const estado = request.nextUrl.searchParams.get("estado");
+  let consulta = firestore().collection(COLECCIONES.procesos).where("uid", "==", usuario.uid);
+  if (estado) consulta = consulta.where("estado", "==", estado);
+  const resultado = await consulta.limit(200).get();
+  const procesos = resultado.docs
     .map((d) => {
       const p = d.data() as Proceso;
       return { id: d.id, carpeta: p.carpeta, estado: p.estado, totalArchivos: p.totalArchivos, inicio: p.inicio.toMillis() };

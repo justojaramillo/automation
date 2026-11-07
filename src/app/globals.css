@@ -1,19 +1,45 @@
 @import "tailwindcss";
 
+/* Colores por rol. Estado: bueno/malo son los de la paleta de estado (siempre van con icono + texto, nunca solos). */
 :root {
-  --background: #ffffff;
+  --background: #f6f6f4;
   --foreground: #171717;
+  --superficie: #ffffff;
+  --texto-2: #55534e;
+  --borde: #dcdad4;
+  --pista: #e6e4de;
+  --acento: #2a78d6;
+  --acento-texto: #ffffff;
+  --bueno: #0ca30c;
+  --malo: #d03b3b;
+  --aviso: #b26a00;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-superficie: var(--superficie);
+  --color-texto2: var(--texto-2);
+  --color-borde: var(--borde);
+  --color-pista: var(--pista);
+  --color-acento: var(--acento);
+  --color-acento-texto: var(--acento-texto);
+  --color-bueno: var(--bueno);
+  --color-malo: var(--malo);
+  --color-aviso: var(--aviso);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #121211;
     --foreground: #ededed;
+    --superficie: #1b1b1a;
+    --texto-2: #b9b7ae;
+    --borde: #34332f;
+    --pista: #2e2d2a;
+    --acento: #3987e5;
+    --acento-texto: #0b0b0b;
+    --aviso: #e0a23a;
   }
 }
 
@@ -21,4 +47,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* Cifras alineadas en tablas y tarjetas */
+.cifra {
+  font-variant-numeric: tabular-nums;
 }

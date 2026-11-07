@@ -1,0 +1,30 @@
+Distribuidora de Acabados Parra Loera FACTURA ELECTRÓNICA DE
+
+S.A.S. VENTA
+
+NIT: 801.030.414-1 No. FE-000051
+
+Responsable de IVA
+
+Calle 46 4 64-63, Barranquilla
+
+Tel. 608 5865629
+
+Resolución DIAN No. 1876496792893 del 2026-02-06. Prefijo FE, rango del FE-000001 al FE-005000.
+
+Fecha de emisión: 2026-06-18 16:20:46 Fecha de vencimiento: 2026-06-18
+
+Forma de pago: Contado Medio de pago: Transferencia débito bancaria
+
+Adquirente: Inversiones Salinas Treviño Ltda. NIT/CC: 898.287.572-1
+
+[sein eme] velramtero [va] valeria
+
+Varilla corrugada 3/8 pulgada x 6 metros $22.600 $2.892.800
+Valor antes de IVA $2.892.800
+IVA 19% $549.632
+TOTAL A PAGAR $3.442.432
+
+CUFE: fOc278963af16beddb5a70682a05733491862c7 f46be2e9c268dabecf6529d4eb2c4f2809dfe53cadb73271c9ddS4eb3
+
+Representación gráfica de factura electrónica de venta. Documento sintético con datos ficticios para fines académicos.

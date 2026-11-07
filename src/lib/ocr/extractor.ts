@@ -147,8 +147,9 @@ const SUFIJO_EMPRESA = /(?:\bS\.?\s?A\.?\s?S\.?|\bS\.?\s?A\.?(?=\s|$)|\bLtda\.?|
 
 function limpiarEncabezado(linea: string): string {
   return linea
-    .replace(/FACTURA\s+(DE\s+VENTA\s+)?ELECTR[OÓ]NICA(\s+DE\s+VENTA)?/gi, " ")
+    .replace(/FACTURA\s+(DE\s+VENTA\s+)?ELECTR[OÓ]NICA(\s+DE(\s+VENTA)?)?/gi, " ")
     .replace(/\b(FACTURA|ELECTR[OÓ]NICA)\b/gi, " ") // a veces la razón social las separa en dos líneas
+    .replace(/\s+VENTA\s*$/i, " ") // "…FACTURA ELECTRÓNICA DE / S.A.S. VENTA": el título se parte entre líneas
     .replace(/Responsable de IVA/gi, " ")
     .replace(/^[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9]+/, "")
     .replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9.]+$/, "") // ruido del OCR al final ("==", "\"")
@@ -164,16 +165,20 @@ function extraerProveedor(lineas: string[], lineaNit: number): string | null {
   const util = (s: string) => s.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g, "").length >= 2;
   while (i < candidatas.length && !util(candidatas[i])) i++;
   if (i >= candidatas.length) return null;
-  let nombre = candidatas[i];
-  // Razón social partida en dos líneas: la segunda quedó casi solo con el sufijo ("LTDA.", "S.A.S.").
-  if (nombre.split(" ").length <= 1 && SUFIJO_EMPRESA.test(nombre)) {
+  const cortarEnSufijo = (n: string): string => {
+    const m = n.match(/^(.*?(?:\bS\.?\s?A\.?\s?S\.?|\bLtda\.?|\bS\.?\s?A\.?(?=\s|$)|\bE\.?\s?U\.?(?=\s|$)))(?=\s|$)/i);
+    return (m ? m[1] : n).trim();
+  };
+  const letras = (n: string): number => n.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g, "").length;
+  let nombre = cortarEnSufijo(candidatas[i]);
+  // Razón social partida en dos líneas: la segunda línea quedó solo con el sufijo ("LTDA.", "S.A.S.", a veces con
+  // ruido del título detrás): se antepone la línea anterior.
+  if (letras(nombre) <= 4 && SUFIJO_EMPRESA.test(nombre)) {
     let k = i + 1;
     while (k < candidatas.length && !util(candidatas[k])) k++;
-    if (k < candidatas.length) nombre = `${candidatas[k]} ${nombre}`;
+    if (k < candidatas.length) nombre = cortarEnSufijo(`${candidatas[k]} ${nombre}`);
   }
-  // Si la línea trae más cosas después del sufijo (p. ej. "FACTURA" ya quitada), corta en el sufijo.
-  const corte = nombre.match(/^(.*?(?:\bS\.?\s?A\.?\s?S\.?|\bLtda\.?|\bS\.?\s?A\.?(?=\s|$)|\bE\.?\s?U\.?(?=\s|$)))(?=\s|$)/i);
-  return (corte ? corte[1] : nombre).trim() || null;
+  return nombre || null;
 }
 
 const plausibleComoTextoCliente = (l: string): boolean => /[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}/.test(l) && !/\bNIT\b/i.test(l);

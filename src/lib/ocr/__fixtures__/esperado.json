@@ -108,5 +108,38 @@
   "impoconsumo": 0,
   "total": 5397126,
   "nItems": 2
+ },
+ "nuevo_0001": {
+  "numero": "FE-000052",
+  "fecha": "2026-07-11",
+  "nitProveedor": "840166815",
+  "clienteDocumento": "805024350",
+  "subtotal": 331300,
+  "iva": 62947,
+  "impoconsumo": 0,
+  "total": 394247,
+  "nItems": 3
+ },
+ "nuevo_0007": {
+  "numero": "FE-000004",
+  "fecha": "2026-01-26",
+  "nitProveedor": "840166815",
+  "clienteDocumento": "808326881",
+  "subtotal": 968000,
+  "iva": 183920,
+  "impoconsumo": 0,
+  "total": 1151920,
+  "nItems": 2
+ },
+ "nuevo_0014": {
+  "numero": "FE-000051",
+  "fecha": "2026-06-18",
+  "nitProveedor": "801030414",
+  "clienteDocumento": "898287572",
+  "subtotal": 2892800,
+  "iva": 549632,
+  "impoconsumo": 0,
+  "total": 3442432,
+  "nItems": 1
  }
 }

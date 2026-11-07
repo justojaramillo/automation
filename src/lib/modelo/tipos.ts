@@ -62,6 +62,38 @@ export interface IndiceNumero {
   hashArchivo: string;
 }
 
+/** Importes acumulados (COP, enteros) de un grupo de facturas. */
+export interface Importes {
+  n: number;
+  subtotal: number;
+  iva: number;
+  impoconsumo: number;
+  total: number;
+}
+
+export interface MetricasProveedor extends Importes {
+  nombre: string;
+}
+
+/**
+ * Métricas de un LOTE (un proceso). Se actualizan con FieldValue.increment DENTRO de la misma
+ * transacción que guarda cada factura: son consistentes con los datos y el panel cuesta 1 lectura
+ * por lote (no una por factura).
+ */
+export interface Metricas {
+  /** Pasaron todas las validaciones. */
+  aceptadas: Importes;
+  /** Falló alguna validación (o no se pudo leer algún campo). */
+  revision: Importes;
+  /** Archivos que no se pudieron procesar tras agotar los intentos. */
+  errores: number;
+  /** Imágenes que ya estaban en la base (mismo SHA-256): no se cuentan dos veces. */
+  duplicadas: number;
+  clientesNuevos: number;
+  /** Solo facturas aceptadas, por NIT del proveedor (sin DV). */
+  proveedores: Record<string, MetricasProveedor>;
+}
+
 /** procesos/{procesoId} */
 export interface Proceso {
   uid: string;
@@ -73,6 +105,7 @@ export interface Proceso {
   rutaExcel: string | null;
   /** Marca (ms) de quien está generando el Excel: evita que dos clientes lo hagan a la vez. */
   finalizandoDesde?: number;
+  metricas?: Partial<Metricas>;
 }
 
 /** procesos/{procesoId}/archivos/{id}: la cola de trabajo. */

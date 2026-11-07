@@ -1,27 +1,27 @@
 "use client";
 
+// Detalle de UN lote: avance en vivo (con antes de IVA, IVA e impoconsumo), Excel y tabla de facturas.
+// El trabajo lo hace el Motor del layout; esta vista solo muestra.
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { Metricas } from "@/lib/modelo/tipos";
+import { calcularTasas, sumarMetricas } from "@/lib/procesamiento/metricas";
+import { cop, dormir, fechaHora, num, pct } from "./formato";
+import { Cifra, Girando, IconoMal, IconoOk, Progreso, botonPrimario } from "./ui";
 
-const CONCURRENCIA_LOTES = 3; // cada llamada concurrente es otra instancia de la función en Vercel
-const SONDEO_MS = 4000; // cada sondeo cuesta ~7 lecturas de Firestore: no bajar de 3-4 s
+const SONDEO_MS = 4000;
 
-interface Avance {
-  terminados: number; aceptadas: number; revision: number; duplicadas: number; errores: number;
-  clientesNuevos: number; clientesExistentes: number; lecturasEstimadas: number;
-}
 interface Estado {
   id: string; carpeta: string; estado: "subiendo" | "ejecutando" | "terminado" | "error" | "en_cola";
-  totalArchivos: number; inicio: number; fin: number | null; tieneExcel: boolean; avance: Avance | null;
+  totalArchivos: number; inicio: number; fin: number | null; tieneExcel: boolean; metricas: Partial<Metricas>;
 }
 interface FilaFactura {
   hash: string; archivo: string; numero: string | null; fecha: string | null; proveedor: string | null;
-  clienteDocumento: string | null; clienteNombre: string | null; total: number | null; estado: "aceptada" | "revision"; motivos: string[];
+  clienteDocumento: string | null; clienteNombre: string | null; subtotal: number | null; iva: number | null;
+  impoconsumo: number; total: number | null; estado: "aceptada" | "revision"; motivos: string[];
 }
-
-const cop = (n: number | null) => (n === null ? "—" : "$" + n.toLocaleString("es-CO"));
-const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function VistaProceso({ id }: { id: string }) {
   const router = useRouter();
@@ -29,29 +29,26 @@ export function VistaProceso({ id }: { id: string }) {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [facturas, setFacturas] = useState<FilaFactura[] | null>(null);
   const [filtro, setFiltro] = useState<"todas" | "aceptada" | "revision">("todas");
-  const [lecturas, setLecturas] = useState(0);
-  const [ahora, setAhora] = useState(0); // se actualiza con cada sondeo (Date.now() no puede llamarse al renderizar)
-  const corriendo = useRef(false);
+  const [ahora, setAhora] = useState(0);
 
   const consultar = useCallback(async (): Promise<Estado | null> => {
-    const r = await fetch(`/api/procesos/${id}`);
+    const r = await fetch(`/api/procesos/${id}`, { cache: "no-store" });
     if (r.status === 401) { router.replace("/login"); return null; }
-    if (!r.ok) { setMensaje("No se encontró el proceso"); return null; }
+    if (!r.ok) { setMensaje("No se encontró este lote (¿se borraron los datos?)"); return null; }
     const e = (await r.json()) as Estado;
     setEstado(e);
     setAhora(Date.now());
-    if (e.avance) setLecturas((l) => l + e.avance!.lecturasEstimadas);
     return e;
   }, [id, router]);
 
-  // Sondeo del avance: se detiene al terminar o con la pestaña oculta (ahorra lecturas de Firestore).
+  // Sondeo barato (el documento del lote ya trae los contadores); se detiene al terminar o con la pestaña oculta.
   useEffect(() => {
     let vivo = true;
     (async () => {
       while (vivo) {
         if (document.visibilityState === "visible") {
           const e = await consultar().catch(() => null);
-          if (e?.estado === "terminado" || e?.estado === "error") break;
+          if (!e || e.estado === "terminado" || e.estado === "error") break;
         }
         await dormir(SONDEO_MS);
       }
@@ -59,96 +56,61 @@ export function VistaProceso({ id }: { id: string }) {
     return () => { vivo = false; };
   }, [consultar]);
 
-  // Bucle de trabajo: 3 llamadas /lote concurrentes hasta que no queda nada; luego /finalizar.
-  // Si el usuario cierra la pestaña y vuelve, este bucle continúa donde quedó (todo es idempotente).
-  const estadoActual = estado?.estado;
+  const terminado = estado?.estado === "terminado";
+  // Las facturas se leen una vez, al terminar (cuesta ~2 lecturas por factura).
   useEffect(() => {
-    if (estadoActual !== "ejecutando" || corriendo.current) return;
-    corriendo.current = true;
-    let cancelado = false;
-    (async () => {
-      let fallosSeguidos = 0;
-      while (!cancelado) {
-        await Promise.all(
-          Array.from({ length: CONCURRENCIA_LOTES }, async () => {
-            while (!cancelado) {
-              try {
-                const r = await fetch(`/api/procesos/${id}/lote`, { method: "POST" });
-                if (!r.ok) throw new Error(`lote ${r.status}`);
-                const d = (await r.json()) as { reclamados: number };
-                fallosSeguidos = 0;
-                if (d.reclamados === 0) return;
-              } catch {
-                if (++fallosSeguidos > 8) { setMensaje("Demasiados errores seguidos; recarga la página para continuar."); cancelado = true; return; }
-                await dormir(2000);
-              }
-            }
-          }),
-        );
-        if (cancelado) break;
-        const f = await fetch(`/api/procesos/${id}/finalizar`, { method: "POST" }).then((r) => r.json()).catch(() => null) as { listo?: boolean } | null;
-        if (f?.listo) { await consultar(); break; }
-        await dormir(5000); // quedan archivos en proceso en otra llamada, o un arrendamiento por caducar
-      }
-      corriendo.current = false;
-    })();
-    return () => { cancelado = true; corriendo.current = false; };
-  }, [estadoActual, id, consultar]);
-
-  // Resultados: solo cuando termina (leer las facturas cuesta ~2 lecturas por factura).
-  useEffect(() => {
-    if (estadoActual !== "terminado" || facturas) return;
+    if (!terminado || facturas) return;
     fetch(`/api/procesos/${id}/facturas`).then((r) => r.json()).then((d: { facturas: FilaFactura[] }) => setFacturas(d.facturas)).catch(() => setFacturas([]));
-  }, [estadoActual, id, facturas]);
+  }, [terminado, id, facturas]);
 
-  const a = estado?.avance;
+  const m = sumarMetricas([estado?.metricas]);
+  const t = calcularTasas(m);
   const total = estado?.totalArchivos ?? 0;
+  const hechas = t.total + m.duplicadas;
   const visibles = (facturas ?? []).filter((f) => filtro === "todas" || f.estado === filtro);
   const segundos = estado ? Math.max(0, Math.round(((estado.fin ?? ahora) - estado.inicio) / 1000)) : 0;
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-6 py-6">
-      <p><Link className="underline text-sm" href="/">← Nuevo proceso</Link></p>
-      <h1 className="text-2xl font-semibold">Proceso: {estado?.carpeta ?? "…"}</h1>
-      {mensaje && <p role="alert" className="text-red-600">{mensaje}</p>}
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-4 py-6">
+      <p><Link className="text-sm underline" href="/">← Procesar facturas</Link></p>
+      <h1 className="text-2xl font-semibold tracking-tight">Lote: {estado?.carpeta ?? "…"}</h1>
+      {mensaje && <p role="alert" className="text-malo">{mensaje}</p>}
 
       {estado && (
-        <section className="flex flex-col gap-2">
-          <p className="text-sm">
-            Estado: <b>{estado.estado}</b>
-            {estado.estado === "ejecutando" ? " — procesando; puedes cerrar la pestaña y volver, continúa donde quedó." : ""}
-          </p>
-          {total > 0 && (
-            <>
-              <progress className="w-full" value={a?.terminados ?? 0} max={total} />
-              <p className="text-sm">{a?.terminados ?? 0} de {total} facturas procesadas · {segundos} s</p>
-            </>
-          )}
-          {a && (
-            <ul className="grid grid-cols-2 gap-x-6 text-sm sm:grid-cols-4">
-              <li>Aceptadas: <b>{a.aceptadas}</b></li>
-              <li>En revisión: <b>{a.revision}</b></li>
-              <li>Duplicadas: <b>{a.duplicadas}</b></li>
-              <li>Con error: <b>{a.errores}</b></li>
-              <li>Clientes nuevos: <b>{a.clientesNuevos}</b></li>
-              <li>Clientes existentes: <b>{a.clientesExistentes}</b></li>
-              <li className="opacity-60">Lecturas estimadas (sondeo): ~{lecturas}</li>
-            </ul>
-          )}
+        <section className="flex flex-col gap-4 rounded-lg border border-borde bg-superficie p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="inline-flex items-center gap-2 font-medium">
+              {terminado ? <><IconoOk className="text-bueno" /> Terminado</> : <><Girando className="text-acento" /> Procesando (en segundo plano)</>}
+            </span>
+            <span className="cifra text-texto2">{fechaHora(estado.inicio)} · {segundos} s</span>
+          </div>
+          <div>
+            <Progreso valor={hechas} max={total} etiqueta="Facturas procesadas" />
+            <p className="cifra mt-1 text-sm text-texto2">{num(hechas)} de {num(total)} facturas procesadas</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Cifra etiqueta="Antes de IVA" valor={cop(m.aceptadas.subtotal + m.revision.subtotal)} />
+            <Cifra etiqueta="IVA" valor={cop(m.aceptadas.iva + m.revision.iva)} />
+            <Cifra etiqueta="Impoconsumo" valor={cop(m.aceptadas.impoconsumo + m.revision.impoconsumo)} />
+            <Cifra etiqueta="Total" valor={cop(m.aceptadas.total + m.revision.total)} />
+          </div>
+          <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <li className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> Leídas correctamente: <b className="cifra">{num(t.correctas)}</b> ({pct(t.pctCorrectas)})</li>
+            <li className="inline-flex items-center gap-1"><IconoMal className="text-malo" /> A revisión / mal leídas: <b className="cifra">{num(t.malLeidas)}</b> ({pct(t.pctMalLeidas)})</li>
+            <li>Duplicadas: <b className="cifra">{num(m.duplicadas)}</b></li>
+            <li>Clientes nuevos: <b className="cifra">{num(m.clientesNuevos)}</b></li>
+          </ul>
           {estado.tieneExcel && (
-            <p>
-              Excel disponible:{" "}
-              <a className="underline font-medium" href={`/api/procesos/${id}/excel`}>descargar</a>
-            </p>
+            <p><a className={botonPrimario} href={`/api/procesos/${id}/excel`}>Descargar Excel</a></p>
           )}
         </section>
       )}
 
       {facturas && (
-        <section className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold">Facturas ({visibles.length})</h2>
-            <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} className="rounded border border-zinc-400 bg-transparent px-2 py-1 text-sm">
+        <section className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold">Facturas ({num(visibles.length)})</h2>
+            <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} className="rounded-md border border-borde bg-superficie px-2 py-1 text-sm" aria-label="Filtrar por estado">
               <option value="todas">Todas</option>
               <option value="aceptada">Aceptadas</option>
               <option value="revision">En revisión</option>
@@ -157,23 +119,29 @@ export function VistaProceso({ id }: { id: string }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-zinc-400">
-                  <th className="py-1 pr-3">Archivo</th><th className="pr-3">Número</th><th className="pr-3">Fecha</th>
-                  <th className="pr-3">Proveedor</th><th className="pr-3">Cliente</th><th className="pr-3 text-right">Total</th><th className="pr-3">Estado</th>
+                <tr className="border-b border-borde text-texto2">
+                  <th className="py-2 pr-3 font-medium">Archivo</th><th className="pr-3 font-medium">Número</th><th className="pr-3 font-medium">Fecha</th>
+                  <th className="pr-3 font-medium">Razón social</th><th className="pr-3 text-right font-medium">Antes de IVA</th>
+                  <th className="pr-3 text-right font-medium">IVA</th><th className="pr-3 text-right font-medium">Impoconsumo</th>
+                  <th className="pr-3 text-right font-medium">Total</th><th className="font-medium">Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {visibles.map((f) => (
-                  <tr key={f.hash} className="border-b border-zinc-200 align-top dark:border-zinc-800">
-                    <td className="py-1 pr-3"><a className="underline" target="_blank" href={`/api/facturas/${f.hash}/imagen`}>{f.archivo}</a></td>
-                    <td className="pr-3">{f.numero ?? "—"}</td>
-                    <td className="pr-3">{f.fecha ?? "—"}</td>
+                  <tr key={f.hash} className="border-b border-borde/60 align-top">
+                    <td className="py-2 pr-3"><a className="underline" target="_blank" rel="noreferrer" href={`/api/facturas/${f.hash}/imagen`}>{f.archivo}</a></td>
+                    <td className="cifra whitespace-nowrap pr-3">{f.numero ?? "—"}</td>
+                    <td className="cifra whitespace-nowrap pr-3">{f.fecha ?? "—"}</td>
                     <td className="pr-3">{f.proveedor ?? "—"}</td>
-                    <td className="pr-3">{f.clienteNombre ?? "—"}{f.clienteDocumento ? <span className="opacity-60"> ({f.clienteDocumento})</span> : null}</td>
-                    <td className="pr-3 text-right">{cop(f.total)}</td>
-                    <td className="pr-3">
-                      {f.estado === "aceptada" ? "Aceptada" : <span title={f.motivos.join("\n")} className="text-amber-600 underline decoration-dotted">Revisión</span>}
-                      {f.estado === "revision" && <div className="max-w-xs text-xs opacity-70">{f.motivos[0]}</div>}
+                    <td className="cifra pr-3 text-right">{cop(f.subtotal)}</td>
+                    <td className="cifra pr-3 text-right">{cop(f.iva)}</td>
+                    <td className="cifra pr-3 text-right">{cop(f.impoconsumo)}</td>
+                    <td className="cifra pr-3 text-right">{cop(f.total)}</td>
+                    <td>
+                      {f.estado === "aceptada"
+                        ? <span className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> Aceptada</span>
+                        : <span className="inline-flex items-center gap-1" title={f.motivos.join("\n")}><IconoMal className="text-malo" /> Revisión</span>}
+                      {f.estado === "revision" && <div className="max-w-xs text-xs text-texto2">{f.motivos[0]}</div>}
                     </td>
                   </tr>
                 ))}
