@@ -35,7 +35,7 @@ El objetivo es que **entienda lo que construye**: explica brevemente el porqué 
 - Índices: no se necesita ninguno compuesto en el flujo. (Un `sum()` filtrado por `procesoId` sí lo pediría; el script de prueba suma sobre toda la colección.)
 
 **Pendiente**
-1. Crear el usuario de prueba en Firebase → Authentication y definir `USUARIOS_PERMITIDOS` en `.env` y en Vercel; luego probar login → subir → procesar → Excel en la URL de producción y medir tiempos/errores en Vercel (Fase 5 en despliegue, aún NO verificada).
+1. Usuario de prueba `billing@me.com` creado (script `scripts/crear-usuario.ts`, correo y clave por variables de entorno); `USUARIOS_PERMITIDOS` ya está en `.env`. **Falta definirla en Vercel** (Production/Preview/Development) y redeplegar. Luego `CORREO=.. CLAVE=.. npx tsx scripts/probar-http.ts https://automation-six-chi.vercel.app salida/facturas` hace login → subida → lotes → Excel por HTTP y limpia. Verificado así en local (10/10 aceptadas, 9 clientes, Excel 4 hojas); en producción aún NO (devuelve 403 hasta definir la variable). La contraseña de la cuenta de prueba es débil: cambiarla antes de usar datos reales.
 2. Fase D (nota de cuota, política de borrado de blobs, revisión de logs) y `npm run verificar` (Fase 8) aún no están hechas.
 3. Corrida completa de 1000 facturas: NO hecha, por la decisión de cuota.
 
