@@ -1,0 +1,49 @@
+// Ruta TEMPORAL de la Fase 1: comprueba que, ya desplegada, la función de Vercel contiene los
+// datos de idioma de tesseract (outputFileTracingIncludes) y que `sharp` carga. Solo devuelve
+// booleanos, ningún secreto. En la Fase A se protegerá con sesión o se eliminará.
+
+import { access } from "node:fs/promises";
+import path from "node:path";
+import { connection } from "next/server";
+
+const DATOS_SPA = path.join(
+  process.cwd(),
+  "node_modules/@tesseract.js-data/spa/4.0.0_best_int/spa.traineddata.gz",
+);
+
+async function existe(ruta: string): Promise<boolean> {
+  try {
+    await access(ruta);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function GET() {
+  // Con cacheComponents las rutas se prerenderizan en el build salvo que usen algo de la petición.
+  // `connection()` obliga a ejecutarla en cada petición (si no, los valores quedarían del build).
+  await connection();
+  let sharpCarga = false;
+  try {
+    const { default: sharp } = await import("sharp");
+    sharpCarga = (await sharp({ create: { width: 2, height: 2, channels: 3, background: "#fff" } }).png().toBuffer()).length > 0;
+  } catch {
+    sharpCarga = false;
+  }
+  return Response.json({
+    ok: true,
+    node: process.version,
+    datosTesseractSpa: await existe(DATOS_SPA),
+    sharp: sharpCarga,
+    firmaEntorno: {
+      vercel: Boolean(process.env.VERCEL),
+      variablesFirebaseAdmin: Boolean(
+        process.env.FIREBASE_ADMIN_PROJECT_ID &&
+          process.env.FIREBASE_ADMIN_CLIENT_EMAIL &&
+          process.env.FIREBASE_ADMIN_PRIVATE_KEY,
+      ),
+      tokenBlob: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+    },
+  });
+}

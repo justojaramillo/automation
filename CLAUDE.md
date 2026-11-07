@@ -24,12 +24,12 @@ El objetivo es que **entienda lo que construye**: explica brevemente el porqué 
 - El Excel y `verificar` leen todas las facturas del proceso (N lecturas): contarlas en el presupuesto.
 - Reprocesar la misma carpeta vuelve a gastar lecturas (el hash evita duplicar datos, no consumo): documenta cuántas se gastaron en cada prueba.
 
-**Pendiente antes de seguir**
-1. **Rotar la clave privada de Firebase** (se imprimió por error en la sesión del 2026-11-06): generar clave nueva en Firebase, borrar la anterior (`private_key_id` que empieza por `4fffaf57`) y actualizar `FIREBASE_ADMIN_PRIVATE_KEY` en `.env` y en Vercel. Si el estudiante ya lo hizo, vuelve a ejecutar `probar-conexion.ts`.
-2. Crear un usuario de prueba en Firebase → Authentication → Usuarios (hoy hay 0).
-3. Crear el proyecto en Vercel importando el repositorio y definir las mismas variables de `.env.example` (Production, Preview y Development). Preguntar si el plan es Hobby o Pro.
+**Fase 1 (2026-11-06)**: proyecto base limpio (`src/app`, sin fuentes de Google, alias `@/*` → `src/*`), `serverExternalPackages: ["tesseract.js"]` (`firebase-admin` y `sharp` ya vienen excluidos por defecto en Next 16) y `outputFileTracingIncludes` para los datos de `@tesseract.js-data/spa/4.0.0_best_int`. Ruta temporal `/api/salud` (con `connection()`; `dynamic = "force-dynamic"` no es compatible con `cacheComponents`) que comprueba datos de tesseract, `sharp` y variables. Verificado en local con `next build` + `next start`; **falta confirmar el despliegue en Vercel**: abrir `/api/salud` en la URL y ver `datosTesseractSpa: true` y `sharp: true`.
 
-**Siguiente paso sugerido** (el estudiante elige): Fase 1 (proyecto base + primer despliegue en Vercel), Fase A (login) o Fase 4 (extractor y pruebas, usando las 10 facturas y su `verdad.json`).
+**Pendiente**
+1. **Rotar la clave privada de Firebase** (se imprimió el 2026-11-06). El estudiante decidió aplazarlo mientras sea solo desarrollo: hacerlo **antes de subir datos reales y antes de la corrida final en producción**.
+2. Crear un usuario de prueba en Firebase → Authentication → Usuarios (hoy hay 0) antes de la Fase A.
+3. Proyecto de Vercel: el estudiante dice que existe, plan **Hobby** (`maxDuration` 300 s). Confirmar que las variables de `.env.example` están en Production, Preview y Development.
 
 **Cómo trabajar con `.env` en sesiones nuevas**: no lo leas, ni lo imprimas, ni lo "resumas" con `cat`, `awk`, `sed` ni `grep` que muestre valores. Para comprobar que está completo usa `npx tsx scripts/probar-conexion.ts`; si necesitas ver qué nombres hay, muestra solo la parte anterior al primer `=` de las líneas que no son comentarios y **solo si el valor no se imprime** (por ejemplo `grep -v '^#' .env | cut -d= -f1`).
 
