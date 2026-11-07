@@ -322,6 +322,8 @@ Verificación: la corrida completa en producción sin errores en los logs, y una
 - Al terminar el script **comprueba y falla (exit 1)** si: el número de imágenes no coincide, hay números repetidos, `subtotal + IVA + INC ≠ total`, el impoconsumo no es coherente con "móvil" o algún DV es inválido. Imprime imágenes, clientes distintos, repeticiones, móviles, diseños, calidad y tamaño.
 - Para el zip del curso: `--cantidad 1000` y revisar que el tamaño del zip sea del orden de 90 MB (medido: 1000 facturas ocupan 108,7 MB; con 10 ocupan ~1 MB).
 
+**Conjunto para los estudiantes (generado 2026-11-07)**: `../facturas` = `/home/justo/projects/facturas` (fuera del repositorio): **1000 imágenes** (600 png + 400 jpg, 108 MB), solo imágenes, generadas de una vez con `npm run generar:facturas -- --cantidad 1000 --semilla 2026 --salida ..` (850 clientes distintos, 150 repeticiones, 150 con impoconsumo, 250 por diseño, números `FE-000001…FE-001000` únicos). Las respuestas correctas están en `salida/verdad_1000.json` (SOLO PROFESOR; el generador la deja en `../verdad.json` y se movió ahí para que no viaje con la carpeta de los estudiantes). Ojo: el generador **borra** `<salida>/facturas` antes de escribir; con `--salida ..` borraría `../facturas`. Las 10 facturas de `salida/facturas` (semilla 2026, cantidad 10) son solo de desarrollo y NO forman parte de las 1000 (son otras facturas y numeran desde `FE-000001`: mezclarlas duplicaría números). Importante para la clase: este conjunto se sube desde el selector de carpeta del navegador al Blob; no existe una carpeta `salida/facturas` en el servidor.
+
 Verificación: el resumen se imprime con las comprobaciones en OK y se revisan a ojo 4 imágenes (una por diseño) — hecho con 10 facturas.
 
 ## 6. Cuando termines todo
