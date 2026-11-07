@@ -8,6 +8,7 @@ import { botonSecundario } from "./ui";
 
 const ENLACES = [
   { href: "/", texto: "Procesar facturas", activo: (p: string) => p === "/" || p.startsWith("/procesos") },
+  { href: "/revision", texto: "Revisión", activo: (p: string) => p.startsWith("/revision") },
   { href: "/metricas", texto: "Métricas", activo: (p: string) => p.startsWith("/metricas") },
 ];
 

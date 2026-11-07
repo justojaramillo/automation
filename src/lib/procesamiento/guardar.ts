@@ -94,6 +94,9 @@ export async function guardarFactura(e: EntradaGuardado): Promise<ResultadoArchi
       uid: e.uid,
       creadoEn: Timestamp.now(),
       items: p.items,
+      dvProveedor: p.dvProveedor,
+      clienteDv: p.clienteDv,
+      clienteDocumentoLeido: p.clienteDocumento,
     };
     tx.create(refFactura, factura);
     if (indexar && refIndice) tx.create(refIndice, { hashArchivo: e.hash });
@@ -119,7 +122,7 @@ export async function guardarFallo(e: Omit<EntradaGuardado, "parcial" | "motivos
         subtotal: null, iva: null, impoconsumo: 0, total: null, estado: "revision",
         motivos: [`No se pudo procesar el archivo: ${e.error}`],
         archivo: e.nombre, blobPathname: e.blobPathname, confianzaOcr: 0, procesoId: e.procesoId, uid: e.uid,
-        creadoEn: Timestamp.now(), items: [],
+        creadoEn: Timestamp.now(), items: [], dvProveedor: null, clienteDv: null, clienteDocumentoLeido: null,
       };
       tx.create(refFactura, factura);
       aplicarMetricas(tx, e.procesoId, { tipo: "error" });

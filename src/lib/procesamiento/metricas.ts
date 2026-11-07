@@ -7,6 +7,7 @@ export const importesVacios = (): Importes => ({ n: 0, subtotal: 0, iva: 0, impo
 export const metricasVacias = (): Metricas => ({
   aceptadas: importesVacios(),
   revision: importesVacios(),
+  manuales: importesVacios(),
   errores: 0,
   duplicadas: 0,
   clientesNuevos: 0,
@@ -15,7 +16,18 @@ export const metricasVacias = (): Metricas => ({
 
 // ───────────────────────── Cambios (lo que se incrementa al guardar) ─────────────────────────
 
+/** Lo que una persona dejó guardado para una factura (para sumar a las métricas o ajustar una corrección). */
+export interface ImportesManual {
+  subtotal: number;
+  iva: number;
+  impoconsumo: number;
+  total: number;
+  nitProveedor: string | null;
+  proveedor: string | null;
+}
+
 export type EventoMetrica =
+  | ({ tipo: "manual"; clienteNuevo: boolean } & ImportesManual)
   | { tipo: "duplicada" }
   | { tipo: "error" }
   | {
@@ -34,7 +46,40 @@ export type EventoMetrica =
 /** Un cambio: sumar `incremento` a la ruta, o fijar `texto` (nombre del proveedor). */
 export type Cambio = { ruta: string[]; incremento: number } | { ruta: string[]; texto: string };
 
+const IMPORTES = ["subtotal", "iva", "impoconsumo", "total"] as const;
+
+/**
+ * Cambios por una corrección manual. Primera vez (`previo` ausente): suma una factura a `manuales` y al
+ * proveedor. Si la persona vuelve a editarla: solo la DIFERENCIA de importes (y, si cambió el NIT del
+ * proveedor, se resta de uno y se suma al otro). Las métricas de la máquina (aceptadas/revisión) no se tocan.
+ */
+export function cambiosManual(nuevo: ImportesManual & { clienteNuevo?: boolean }, previo?: ImportesManual): Cambio[] {
+  const cambios: Cambio[] = [];
+  const delta = (campo: (typeof IMPORTES)[number]) => nuevo[campo] - (previo?.[campo] ?? 0);
+  if (!previo) cambios.push({ ruta: ["metricas", "manuales", "n"], incremento: 1 });
+  for (const c of IMPORTES) if (delta(c) !== 0) cambios.push({ ruta: ["metricas", "manuales", c], incremento: delta(c) });
+  if (nuevo.clienteNuevo) cambios.push({ ruta: ["metricas", "clientesNuevos"], incremento: 1 });
+
+  const mismo = previo && previo.nitProveedor === nuevo.nitProveedor;
+  if (previo?.nitProveedor && !mismo) {
+    const viejo = ["metricas", "proveedores", previo.nitProveedor];
+    cambios.push({ ruta: [...viejo, "n"], incremento: -1 });
+    for (const c of IMPORTES) if (previo[c] !== 0) cambios.push({ ruta: [...viejo, c], incremento: -previo[c] });
+  }
+  if (nuevo.nitProveedor) {
+    const base = ["metricas", "proveedores", nuevo.nitProveedor];
+    if (!mismo) cambios.push({ ruta: [...base, "n"], incremento: 1 });
+    for (const c of IMPORTES) {
+      const d = mismo ? delta(c) : nuevo[c];
+      if (d !== 0) cambios.push({ ruta: [...base, c], incremento: d });
+    }
+    cambios.push({ ruta: [...base, "nombre"], texto: nuevo.proveedor ?? nuevo.nitProveedor });
+  }
+  return cambios;
+}
+
 export function cambiosDe(e: EventoMetrica): Cambio[] {
+  if (e.tipo === "manual") return cambiosManual(e);
   if (e.tipo === "duplicada") return [{ ruta: ["metricas", "duplicadas"], incremento: 1 }];
   if (e.tipo === "error") return [{ ruta: ["metricas", "errores"], incremento: 1 }];
   const grupo = e.estado === "aceptada" ? "aceptadas" : "revision";
@@ -77,6 +122,7 @@ export function sumarMetricas(lotes: (Partial<Metricas> | undefined)[]): Metrica
     if (!m) continue;
     r.aceptadas = sumaImportes(r.aceptadas, m.aceptadas);
     r.revision = sumaImportes(r.revision, m.revision);
+    r.manuales = sumaImportes(r.manuales, m.manuales);
     r.errores += m.errores ?? 0;
     r.duplicadas += m.duplicadas ?? 0;
     r.clientesNuevos += m.clientesNuevos ?? 0;
@@ -93,6 +139,10 @@ export interface Tasas {
   total: number;
   correctas: number;
   malLeidas: number;
+  /** De las mal leídas, cuántas ya fueron ingresadas o corregidas a mano por una persona. */
+  revisadasAMano: number;
+  /** Mal leídas que todavía esperan a una persona. */
+  pendientes: number;
   /** Porcentajes 0–100 con un decimal; `null` si aún no hay facturas. */
   pctCorrectas: number | null;
   pctMalLeidas: number | null;
@@ -109,7 +159,11 @@ export function calcularTasas(m: Metricas): Tasas {
   const correctas = m.aceptadas.n;
   const malLeidas = m.revision.n + m.errores;
   const total = correctas + malLeidas;
-  return { total, correctas, malLeidas, pctCorrectas: pct(correctas, total), pctMalLeidas: pct(malLeidas, total) };
+  const revisadasAMano = Math.min(m.manuales.n, malLeidas);
+  return {
+    total, correctas, malLeidas, revisadasAMano, pendientes: malLeidas - revisadasAMano,
+    pctCorrectas: pct(correctas, total), pctMalLeidas: pct(malLeidas, total),
+  };
 }
 
 export interface FilaProveedor extends MetricasProveedor {

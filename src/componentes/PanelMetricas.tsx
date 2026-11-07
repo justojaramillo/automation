@@ -34,6 +34,11 @@ export function PanelMetricas() {
   const m = useMemo(() => sumarMetricas(elegidos.map((l) => l.metricas)), [elegidos]);
   const t = calcularTasas(m);
   const proveedores = proveedoresOrdenados(m);
+  // Lo aceptado por la máquina más lo que una persona ingresó o corrigió a mano.
+  const procesado = {
+    n: m.aceptadas.n + m.manuales.n, subtotal: m.aceptadas.subtotal + m.manuales.subtotal, iva: m.aceptadas.iva + m.manuales.iva,
+    impoconsumo: m.aceptadas.impoconsumo + m.manuales.impoconsumo, total: m.aceptadas.total + m.manuales.total,
+  };
   const maxProveedor = Math.max(1, ...proveedores.map((p) => p.total));
   const procesando = lotes.some((l) => l.estado === "ejecutando");
   const etiquetaSeleccion = seleccion === "todos" ? `todos los lotes (${lotes.length})` : `el lote ${elegidos[0]?.numero ?? ""}`;
@@ -78,23 +83,29 @@ export function PanelMetricas() {
           <Cifra etiqueta="Facturas procesadas" valor={num(t.total)} detalle={`${num(m.revision.n)} en revisión · ${num(m.errores)} con error`} />
           <Cifra etiqueta="Duplicadas (ya estaban)" valor={num(m.duplicadas)} detalle={`Clientes en la base: ${num(datos?.clientesEnBase ?? 0)}`} />
         </div>
+        {t.malLeidas > 0 && (
+          <p className="rounded-lg border border-borde bg-superficie p-3 text-sm" data-testid="aviso-pendientes">
+            De las {num(t.malLeidas)} mal leídas, <b className="cifra">{num(t.revisadasAMano)}</b> ya se revisaron a mano y <b className="cifra">{num(t.pendientes)}</b> esperan a una persona.
+            {t.pendientes > 0 && <Link href="/revision" className="ml-3 font-medium underline">Revisar las pendientes →</Link>}
+          </p>
+        )}
         <p className="text-xs text-texto2">
           «Leída correctamente» = pasó todas las validaciones (IVA 19 %, impoconsumo 4 %, sumas, dígito de verificación del NIT…). No se compara con una respuesta conocida,
-          así que un error que cuadre aritméticamente podría pasar. Las duplicadas no cuentan en los porcentajes.
+          así que un error que cuadre aritméticamente podría pasar. Los porcentajes miden a la máquina: lo que una persona revisa a mano no los cambia. Las duplicadas no cuentan.
         </p>
       </section>
 
       <section aria-labelledby="h-montos" className="flex flex-col gap-3">
-        <h2 id="h-montos" className="text-lg font-semibold">Lo procesado · facturas aceptadas</h2>
+        <h2 id="h-montos" className="text-lg font-semibold">Lo procesado · aceptadas y revisadas a mano</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Cifra grande etiqueta="Antes de IVA" valor={cop(m.aceptadas.subtotal)} />
-          <Cifra grande etiqueta="IVA" valor={cop(m.aceptadas.iva)} />
-          <Cifra grande etiqueta="Impoconsumo" valor={cop(m.aceptadas.impoconsumo)} />
-          <Cifra grande etiqueta="Total" valor={cop(m.aceptadas.total)} detalle={`${num(m.aceptadas.n)} facturas`} />
+          <Cifra grande etiqueta="Antes de IVA" valor={cop(procesado.subtotal)} />
+          <Cifra grande etiqueta="IVA" valor={cop(procesado.iva)} />
+          <Cifra grande etiqueta="Impoconsumo" valor={cop(procesado.impoconsumo)} />
+          <Cifra grande etiqueta="Total" valor={cop(procesado.total)} detalle={`${num(procesado.n)} facturas · ${num(m.manuales.n)} revisadas a mano`} />
         </div>
-        {m.revision.n > 0 && (
+        {t.pendientes > 0 && (
           <p className="cifra text-sm text-texto2">
-            Además hay {num(m.revision.n)} facturas en revisión por {cop(m.revision.total)} (no incluidas arriba: alguna cifra no cuadra).
+            Hay {num(t.pendientes)} facturas pendientes de revisión: no están incluidas arriba hasta que una persona las revise.
           </p>
         )}
       </section>
@@ -132,16 +143,16 @@ export function PanelMetricas() {
                 <tr className="font-semibold">
                   <td className="py-2 pr-3" colSpan={2}>Total</td>
                   <td className="cifra pr-3 text-right">{num(proveedores.reduce((a, p) => a + p.n, 0))}</td>
-                  <td className="cifra pr-3 text-right">{cop(m.aceptadas.subtotal)}</td>
-                  <td className="cifra pr-3 text-right">{cop(m.aceptadas.iva)}</td>
-                  <td className="cifra pr-3 text-right">{cop(m.aceptadas.impoconsumo)}</td>
-                  <td className="cifra pr-3 text-right">{cop(m.aceptadas.total)}</td><td />
+                  <td className="cifra pr-3 text-right">{cop(proveedores.reduce((a, p) => a + p.subtotal, 0))}</td>
+                  <td className="cifra pr-3 text-right">{cop(proveedores.reduce((a, p) => a + p.iva, 0))}</td>
+                  <td className="cifra pr-3 text-right">{cop(proveedores.reduce((a, p) => a + p.impoconsumo, 0))}</td>
+                  <td className="cifra pr-3 text-right">{cop(proveedores.reduce((a, p) => a + p.total, 0))}</td><td />
                 </tr>
               </tfoot>
             </table>
           </div>
         )}
-        <p className="text-xs text-texto2">Solo facturas aceptadas: en las de revisión el NIT o el nombre pueden estar mal leídos.</p>
+        <p className="text-xs text-texto2">Solo facturas aceptadas o revisadas a mano: en las que esperan revisión, el NIT o el nombre pueden estar mal leídos.</p>
       </section>
 
       <section aria-labelledby="h-lotes" className="flex flex-col gap-3 rounded-lg border border-borde bg-superficie p-5">
@@ -155,7 +166,7 @@ export function PanelMetricas() {
                 <th className="pr-3 font-medium"><span className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> Correctas</span></th>
                 <th className="pr-3 font-medium"><span className="inline-flex items-center gap-1"><IconoMal className="text-malo" /> Mal leídas</span></th>
                 <th className="pr-3 font-medium"><span className="sr-only">Proporción</span></th>
-                <th className="pr-3 text-right font-medium">Total aceptado</th><th className="font-medium">Estado</th>
+                <th className="pr-3 text-right font-medium">Total procesado</th><th className="font-medium">Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -171,9 +182,9 @@ export function PanelMetricas() {
                     <td className="cifra pr-3 text-texto2">{fechaHora(l.inicio)}</td>
                     <td className="cifra pr-3 text-right">{num(l.totalArchivos)}</td>
                     <td className="cifra pr-3">{num(lt.correctas)} · {pct(lt.pctCorrectas)}</td>
-                    <td className="cifra pr-3">{num(lt.malLeidas)} · {pct(lt.pctMalLeidas)}</td>
+                    <td className="cifra pr-3">{num(lt.malLeidas)} · {pct(lt.pctMalLeidas)}{lt.malLeidas > 0 && <div className="text-xs text-texto2">{num(lt.pendientes)} por revisar</div>}</td>
                     <td className="pr-3"><BarraProporcion buenas={lt.correctas} malas={lt.malLeidas} /></td>
-                    <td className="cifra pr-3 text-right">{cop(lm.aceptadas.total)}</td>
+                    <td className="cifra pr-3 text-right">{cop(lm.aceptadas.total + lm.manuales.total)}</td>
                     <td>
                       {l.estado === "terminado" ? "Terminado" : <span className="inline-flex items-center gap-1"><Girando className="text-acento" /> Procesando</span>}
                       {l.tieneExcel && <> · <a className="underline" href={`/api/procesos/${l.id}/excel`}>Excel</a></>}

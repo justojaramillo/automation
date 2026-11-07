@@ -46,3 +46,21 @@ export async function finalizarProceso(procesoId: string): Promise<ResultadoFina
   await ref.update({ estado: "terminado", fin: Timestamp.fromDate(fin), rutaExcel: ruta });
   return { listo: true, rutaExcel: ruta };
 }
+
+/**
+ * Vuelve a generar el Excel de un lote YA terminado (por ejemplo, después de corregir facturas a mano, que
+ * cambian los datos). Crea un archivo nuevo con la hora actual y apunta el lote a él.
+ */
+export async function regenerarExcel(procesoId: string): Promise<string> {
+  const ref = refProceso(procesoId);
+  const proceso = (await ref.get()).data() as Proceso;
+  const fin = new Date();
+  const buffer = await generarExcel(procesoId, proceso, proceso.fin?.toDate() ?? fin);
+  const ruta = await subirBlob(
+    `procesos/${procesoId}/${nombreExcel(fin)}`,
+    buffer,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  await ref.update({ rutaExcel: ruta });
+  return ruta;
+}

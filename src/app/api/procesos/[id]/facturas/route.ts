@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/procesos
       return {
         hash: s.id, archivo: f.archivo, numero: f.numero, fecha: f.fecha, proveedor: f.proveedor, clienteDocumento: f.clienteDocumento,
         clienteNombre: f.clienteNombre, subtotal: f.subtotal, iva: f.iva, impoconsumo: f.impoconsumo, total: f.total,
-        estado: f.estado, motivos: f.motivos, confianzaOcr: f.confianzaOcr,
+        estado: f.estado, motivos: f.motivos, confianzaOcr: f.confianzaOcr, corregidaManualmente: Boolean(f.corregidaManualmente),
       };
     })
     .sort((a, b) => (a.numero ?? "~").localeCompare(b.numero ?? "~") || a.archivo.localeCompare(b.archivo));

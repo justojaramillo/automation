@@ -55,6 +55,16 @@ export interface Factura {
   uid: string;
   creadoEn: Timestamp;
   items: ItemFactura[];
+  /** Dígitos de verificación y documento tal como los leyó el OCR (para precargar el formulario de revisión). */
+  dvProveedor?: number | null;
+  clienteDv?: number | null;
+  clienteDocumentoLeido?: string | null;
+  /** Revisión humana: quién la corrigió, cuándo, qué decía la máquina y qué validaciones se ignoraron. */
+  corregidaManualmente?: boolean;
+  corregidaPor?: string;
+  corregidaEn?: Timestamp;
+  motivosOriginales?: string[];
+  validacionesIgnoradas?: string[];
 }
 
 /** indices_numero/{numero} */
@@ -85,6 +95,11 @@ export interface Metricas {
   aceptadas: Importes;
   /** Falló alguna validación (o no se pudo leer algún campo). */
   revision: Importes;
+  /**
+   * Facturas que una persona ingresó o corrigió a mano (antes estaban en revisión o con error).
+   * NO entran en «leídas correctamente», que mide a la máquina; sus importes sí suman a lo procesado.
+   */
+  manuales: Importes;
   /** Archivos que no se pudieron procesar tras agotar los intentos. */
   errores: number;
   /** Imágenes que ya estaban en la base (mismo SHA-256): no se cuentan dos veces. */

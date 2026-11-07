@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Metricas } from "@/lib/modelo/tipos";
 import { calcularTasas, sumarMetricas } from "@/lib/procesamiento/metricas";
 import { cop, dormir, fechaHora, num, pct } from "./formato";
-import { Cifra, Girando, IconoMal, IconoOk, Progreso, botonPrimario } from "./ui";
+import { Cifra, Girando, IconoMal, IconoOk, Progreso, botonPrimario, botonSecundario } from "./ui";
 
 const SONDEO_MS = 4000;
 
@@ -20,7 +20,7 @@ interface Estado {
 interface FilaFactura {
   hash: string; archivo: string; numero: string | null; fecha: string | null; proveedor: string | null;
   clienteDocumento: string | null; clienteNombre: string | null; subtotal: number | null; iva: number | null;
-  impoconsumo: number; total: number | null; estado: "aceptada" | "revision"; motivos: string[];
+  impoconsumo: number; total: number | null; estado: "aceptada" | "revision"; motivos: string[]; corregidaManualmente: boolean;
 }
 
 export function VistaProceso({ id }: { id: string }) {
@@ -30,6 +30,7 @@ export function VistaProceso({ id }: { id: string }) {
   const [facturas, setFacturas] = useState<FilaFactura[] | null>(null);
   const [filtro, setFiltro] = useState<"todas" | "aceptada" | "revision">("todas");
   const [ahora, setAhora] = useState(0);
+  const [regenerando, setRegenerando] = useState(false);
 
   const consultar = useCallback(async (): Promise<Estado | null> => {
     const r = await fetch(`/api/procesos/${id}`, { cache: "no-store" });
@@ -63,6 +64,17 @@ export function VistaProceso({ id }: { id: string }) {
     fetch(`/api/procesos/${id}/facturas`).then((r) => r.json()).then((d: { facturas: FilaFactura[] }) => setFacturas(d.facturas)).catch(() => setFacturas([]));
   }, [terminado, id, facturas]);
 
+  async function regenerarExcel() {
+    setRegenerando(true);
+    try {
+      const r = await fetch(`/api/procesos/${id}/regenerar-excel`, { method: "POST" });
+      if (!r.ok) setMensaje("No se pudo regenerar el Excel");
+      await consultar();
+    } finally {
+      setRegenerando(false);
+    }
+  }
+
   const m = sumarMetricas([estado?.metricas]);
   const t = calcularTasas(m);
   const total = estado?.totalArchivos ?? 0;
@@ -89,19 +101,28 @@ export function VistaProceso({ id }: { id: string }) {
             <p className="cifra mt-1 text-sm text-texto2">{num(hechas)} de {num(total)} facturas procesadas</p>
           </div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Cifra etiqueta="Antes de IVA" valor={cop(m.aceptadas.subtotal + m.revision.subtotal)} />
-            <Cifra etiqueta="IVA" valor={cop(m.aceptadas.iva + m.revision.iva)} />
-            <Cifra etiqueta="Impoconsumo" valor={cop(m.aceptadas.impoconsumo + m.revision.impoconsumo)} />
-            <Cifra etiqueta="Total" valor={cop(m.aceptadas.total + m.revision.total)} />
+            <Cifra etiqueta="Antes de IVA" valor={cop(m.aceptadas.subtotal + m.manuales.subtotal)} />
+            <Cifra etiqueta="IVA" valor={cop(m.aceptadas.iva + m.manuales.iva)} />
+            <Cifra etiqueta="Impoconsumo" valor={cop(m.aceptadas.impoconsumo + m.manuales.impoconsumo)} />
+            <Cifra etiqueta="Total" valor={cop(m.aceptadas.total + m.manuales.total)} />
           </div>
+          <p className="-mt-2 text-xs text-texto2">Suma lo aceptado (por la máquina o revisado a mano). Lo que está en revisión no se incluye hasta que una persona lo revise.</p>
           <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
             <li className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> Leídas correctamente: <b className="cifra">{num(t.correctas)}</b> ({pct(t.pctCorrectas)})</li>
             <li className="inline-flex items-center gap-1"><IconoMal className="text-malo" /> A revisión / mal leídas: <b className="cifra">{num(t.malLeidas)}</b> ({pct(t.pctMalLeidas)})</li>
+            <li>Revisadas a mano: <b className="cifra">{num(t.revisadasAMano)}</b>{t.pendientes > 0 && <> · <Link className="underline" href="/revision">{num(t.pendientes)} pendientes: revisar</Link></>}</li>
             <li>Duplicadas: <b className="cifra">{num(m.duplicadas)}</b></li>
             <li>Clientes nuevos: <b className="cifra">{num(m.clientesNuevos)}</b></li>
           </ul>
           {estado.tieneExcel && (
-            <p><a className={botonPrimario} href={`/api/procesos/${id}/excel`}>Descargar Excel</a></p>
+            <p className="flex flex-wrap items-center gap-3">
+              <a className={botonPrimario} href={`/api/procesos/${id}/excel`}>Descargar Excel</a>
+              {terminado && m.manuales.n > 0 && (
+                <button className={botonSecundario} onClick={() => void regenerarExcel()} disabled={regenerando} data-testid="regenerar-excel">
+                  {regenerando ? "Generando…" : "Regenerar el Excel con las correcciones a mano"}
+                </button>
+              )}
+            </p>
           )}
         </section>
       )}
@@ -139,9 +160,10 @@ export function VistaProceso({ id }: { id: string }) {
                     <td className="cifra pr-3 text-right">{cop(f.total)}</td>
                     <td>
                       {f.estado === "aceptada"
-                        ? <span className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> Aceptada</span>
+                        ? <span className="inline-flex items-center gap-1"><IconoOk className="text-bueno" /> {f.corregidaManualmente ? "Revisada a mano" : "Aceptada"}</span>
                         : <span className="inline-flex items-center gap-1" title={f.motivos.join("\n")}><IconoMal className="text-malo" /> Revisión</span>}
                       {f.estado === "revision" && <div className="max-w-xs text-xs text-texto2">{f.motivos[0]}</div>}
+                      {(f.estado === "revision" || f.corregidaManualmente) && <div><Link className="text-sm underline" href={`/revision/${f.hash}`}>{f.estado === "revision" ? "Revisar" : "Editar"}</Link></div>}
                     </td>
                   </tr>
                 ))}
