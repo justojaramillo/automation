@@ -50,7 +50,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); o
 
 /* Tipografía */
 h1 { margin: 0; font-size: 60px; line-height: 1.08; letter-spacing: -.02em; }
-h2 { margin: 0; font-size: 42px; line-height: 1.12; letter-spacing: -.015em; }
+h2 { margin: 0; font-size: 38px; line-height: 1.12; letter-spacing: -.015em; }
 h3 { margin: 0 0 6px; font-size: 27px; line-height: 1.2; }
 p { margin: 0; font-size: 26px; line-height: 1.38; }
 .peq { font-size: 21px; line-height: 1.35; }
@@ -68,6 +68,8 @@ ul.lista li { position: relative; padding-left: 34px; font-size: 26px; line-heig
 ul.lista li::before { content: ""; position: absolute; left: 4px; top: .55em; width: 14px; height: 14px; border-radius: 4px; background: var(--acento); }
 ul.lista.peq li { font-size: 22px; padding-left: 30px; gap: 8px; }
 ul.lista.peq li::before { width: 12px; height: 12px; top: .5em; }
+ul.lista.chica li { font-size: 19px; line-height: 1.3; padding-left: 28px; }
+ul.lista.chica li::before { width: 11px; height: 11px; top: .45em; }
 ul.lista.ok li::before { background: var(--verde); border-radius: 50%; }
 ul.lista.mal li::before { background: var(--rojo); border-radius: 50%; }
 
@@ -97,6 +99,10 @@ ul.lista.mal li::before { background: var(--rojo); border-radius: 50%; }
 .chip.violeta { background: var(--violeta-suave); color: var(--violeta); }
 .num { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--acento); color: var(--sobre-acento); font-weight: 800; font-size: 22px; flex: none; }
 
+.term { background: #0f1117; color: #e7e9ee; border-radius: 12px; padding: 14px 20px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 19px; line-height: 1.55; white-space: pre; overflow: hidden; }
+.term .ok { color: #6ee7a1; } .term .mal { color: #ff8a8a; } .term .c { color: #8b93a7; } .term .n { color: #9bbcff; }
+.boton { display: inline-block; padding: 14px 28px; border-radius: 12px; background: var(--acento); color: var(--sobre-acento); font-weight: 700; font-size: 26px; text-decoration: none; }
+.boton:hover { filter: brightness(1.08); }
 .cita { border-left: 6px solid var(--acento); padding: 6px 0 6px 22px; font-size: 30px; line-height: 1.3; font-weight: 600; }
 .aviso { border-radius: 12px; padding: 14px 20px; font-size: 22px; line-height: 1.35; background: var(--ambar-suave); border: 2px solid var(--ambar); }
 .aviso.azul { background: var(--acento-suave); border-color: var(--acento); }

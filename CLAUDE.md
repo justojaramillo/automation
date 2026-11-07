@@ -35,6 +35,8 @@ Repositorio: https://github.com/justojaramillo/automation (rama `main`). Producc
 
 **Pendiente:** (1) procesar las 1000 completas en producción y anotar la cuota gastada; (2) probar el botón «Borrar todo» contra la base real (una prueba automática no debe ejecutarlo; el sistema de seguridad lo bloqueó con razón) y la interfaz en un teléfono; (3) completar la Fase D (nota de cuota, política de blobs); (4) opcional: `npm run verificar` contra `verdad.json`.
 
+**Presentaciones para la clase (2026-11-07):** `docs/presentaciones/index.html` enlaza dos mazos HTML que funcionan sin internet (abrir en el navegador; `F` pantalla completa, `N` notas del profesor, `T` tema, `Ctrl+P` PDF): `01-automatizacion.html` (32 diapositivas: qué es automatizar, qué se puede automatizar, objetivos, tecnologías, áreas de una empresa, qué es un proceso, caso de la nómina, riesgos, ciclo, actividad en clase) y `02-construccion.html` (26 diapositivas: arquitectura, restricciones de Vercel y cada fase con su diagrama, porqué y verificación; errores reales y resultados medidos). Se arman con `npm run presentaciones` desde fragmentos en `docs/presentaciones/fuente/` (una diapositiva por archivo); `npx tsx scripts/revisar-presentaciones.ts <carpeta>` detecta desbordes y diagramas encogidos y guarda capturas. Los ejemplos de nómina (Ana: devengado 3.150.000, salud y pensión 4 % = 126.000 cada una, neto 2.898.000) son ilustrativos y simplificados; las tarifas se verifican con un contador. Las cifras de las diapositivas de resultados son las medidas de este documento.
+
 **Mantenimiento de la documentación:** `AGENTS.md` y `CLAUDE.md` se generan con `npm run docs` desde `docs/fuente/` (cabeceras `cabecera-agents.md` y `cabecera-claude.md` + guía en `docs/fuente/guia/*.md`). Edita la fuente y regenera; `npm test` falla si los archivos no coinciden o si la guía menciona un archivo, variable o comando que ya no existe.
 
 <!-- PROFESOR:FIN -->
@@ -173,6 +175,7 @@ src/lib/excel/generar.ts       generación del Excel
 src/lib/blob.ts, rutas.ts      utilidades de Blob (servidor) y de rutas (servidor y navegador)
 scripts/                       verificaciones y herramientas (ver sección 9)
 docs/fuente/                   fuente de AGENTS.md y CLAUDE.md (solo en el repositorio de referencia)
+docs/presentaciones/           dos presentaciones HTML para la clase: automatización y construcción paso a paso
 ```
 
 ## 6. Datos del ejercicio y plan paso a paso
@@ -604,6 +607,8 @@ Cifras de referencia; **verifícalas en la documentación vigente de cada servic
 | `npm run dev` / `npm run build` / `npm run start` | desarrollo, compilación de producción y servidor de producción local |
 | `npm run lint` · `npx tsc --noEmit` · `npm test` | las tres comprobaciones previas a cada commit |
 | `npm run docs` | regenera `AGENTS.md` y `CLAUDE.md` desde `docs/fuente/` (solo repositorio de referencia) |
+| `npm run presentaciones` | regenera `docs/presentaciones/01-automatizacion.html` y `02-construccion.html` desde sus fragmentos (solo repositorio de referencia) |
+| `npx tsx scripts/revisar-presentaciones.ts <carpetaCapturas>` | control de calidad de las presentaciones con navegador real: desbordes, textos que no caben, diagramas encogidos y capturas |
 | `npm run generar:facturas -- --cantidad N --semilla S --salida <carpeta>` | generador de facturas (solo profesor, Fase G) |
 | `npx tsx scripts/probar-conexion.ts` | Firestore, Auth y Blob responden (Fase 0) |
 | `npx tsx scripts/verificar-reglas.ts` | las reglas de Firestore están cerradas (Fase 2) |

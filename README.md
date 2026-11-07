@@ -19,6 +19,10 @@ npm run dev                 # http://localhost:3000
 
 Comprobaciones antes de cada commit: `npm run lint`, `npx tsc --noEmit`, `npm test`.
 
+## Presentaciones para la clase
+
+En [`docs/presentaciones/`](docs/presentaciones/index.html) hay dos presentaciones HTML que funcionan sin internet: **1) Automatización** (qué es, qué se puede automatizar, áreas y procesos de una empresa, el caso de la nómina) y **2) Construcción del procesador de facturas, paso a paso**. Ábrelas en el navegador (`F` pantalla completa, `N` notas del profesor, `T` tema, `Ctrl+P` para PDF). Se regeneran con `npm run presentaciones`.
+
 ## Documentación
 
 `AGENTS.md` y `CLAUDE.md` se **generan** con `npm run docs` a partir de `docs/fuente/` (no se editan a mano en este repositorio). `npm test` falla si no coinciden con su fuente o si mencionan un archivo, variable o comando que no existe.

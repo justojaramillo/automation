@@ -30,8 +30,8 @@
     actual = n;
     var s = slides[actual];
     s.classList.add("activa");
-    // al entrar hacia adelante se ocultan los pasos; al volver atrás se muestran todos
-    pasosDe(s).forEach(function (p) { p.classList.toggle("visto", !!alFinal); });
+    // al entrar hacia adelante se ocultan los pasos (salvo los marcados "inicio"); al volver atrás se muestran todos
+    pasosDe(s).forEach(function (p) { p.classList.toggle("visto", !!alFinal || p.classList.contains("inicio")); });
     barra.style.width = ((actual + 1) / slides.length) * 100 + "%";
     contador.textContent = actual + 1 + " / " + slides.length;
     try { history.replaceState(null, "", "#" + (actual + 1)); } catch (e) { /* sin historial */ }
@@ -91,6 +91,10 @@
     else if (e.clientX < window.innerWidth * 0.33) retroceder();
   });
 
+  window.addEventListener("hashchange", function () {
+    var n = parseInt((location.hash || "").replace("#", ""), 10);
+    if (!isNaN(n) && n - 1 !== actual) ir(n - 1, false);
+  });
   window.addEventListener("resize", escalar);
   try {
     var guardado = localStorage.getItem("tema-presentacion");

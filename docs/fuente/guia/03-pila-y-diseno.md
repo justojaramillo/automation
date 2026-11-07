@@ -56,4 +56,5 @@ src/lib/excel/generar.ts       generación del Excel
 src/lib/blob.ts, rutas.ts      utilidades de Blob (servidor) y de rutas (servidor y navegador)
 scripts/                       verificaciones y herramientas (ver sección 9)
 docs/fuente/                   fuente de AGENTS.md y CLAUDE.md (solo en el repositorio de referencia)
+docs/presentaciones/           dos presentaciones HTML para la clase: automatización y construcción paso a paso
 ```

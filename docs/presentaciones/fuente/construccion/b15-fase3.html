@@ -1,0 +1,25 @@
+<section class="slide" id="fase-3">
+  <span class="sobre">Fase 3 · Subida de la carpeta a Blob</span>
+  <h2>El navegador sube directo; el servidor da permiso</h2>
+  <svg viewBox="0 0 1152 330" width="1152" height="320" role="img" aria-label="Secuencia: pedir token, validar, subir directo a Blob">
+    <rect x="40" y="0" width="200" height="44" rx="10" class="caja azul"/><text x="140" y="29" class="t-b" text-anchor="middle">Navegador</text>
+    <rect x="470" y="0" width="200" height="44" rx="10" class="caja verde"/><text x="570" y="29" class="t-b" text-anchor="middle">Servidor</text>
+    <rect x="900" y="0" width="200" height="44" rx="10" class="caja ambar"/><text x="1000" y="29" class="t-b" text-anchor="middle">Vercel Blob</text>
+    <path class="linea punteada fina" d="M140 44 V330 M570 44 V330 M1000 44 V330"/>
+    <g class="paso inicio"><path class="flecha azul" d="M142 84 H566"/><text x="354" y="74" class="t-xs t-b" text-anchor="middle">1 · pido permiso para procesos/&lt;lote&gt;/0001-factura.png</text></g>
+    <g class="paso"><rect x="372" y="100" width="396" height="66" rx="10" class="caja ambar"/><text x="570" y="124" class="t-xs t-b" text-anchor="middle">2 · valida: sesión · lote propio en «subiendo»</text><text x="570" y="144" class="t-xs t-b" text-anchor="middle">ruta del lote · PNG o JPG · máx. 8 MB</text></g>
+    <g class="paso"><path class="flecha verde" d="M568 196 H144"/><text x="356" y="186" class="t-xs t-b" text-anchor="middle">3 · token de un solo uso</text></g>
+    <g class="paso"><path class="flecha azul" d="M142 246 H996"/><text x="569" y="236" class="t-xs t-b" text-anchor="middle">4 · subo la imagen directo, sin pasar por la API</text></g>
+    <g class="paso"><path class="flecha ambar" d="M998 296 H144"/><text x="571" y="286" class="t-xs t-b" text-anchor="middle">5 · listo (el servidor no espera este aviso: luego lista el lote)</text></g>
+  </svg>
+  <div class="cols3">
+    <div class="card azul paso"><h3>6 a la vez</h3><p class="peq">seis subidas concurrentes por lote</p></div>
+    <div class="card verde paso"><h3>3 reintentos</h3><p class="peq">con espera creciente, por archivo</p></div>
+    <div class="card ambar paso"><h3>Un fallo no detiene</h3><p class="peq">queda en una lista para «Reintentar esos archivos»</p></div>
+  </div>
+  <aside class="notas">
+    <b>Por qué directo:</b> el cuerpo de una petición a una función de Vercel no pasa de 4,5 MB; además, así el servidor no gasta tiempo moviendo bytes. El servidor solo valida y emite un <b>token de un solo uso</b>.<br>
+    <b>Validaciones del paso 2</b> (cada una evita un ataque): sesión (sin login no hay token); lote propio y en estado «subiendo» (no se sube al lote de otro ni a uno cerrado); ruta del lote (no se escribe en cualquier lugar del almacén); tipo y tamaño (no se suben ejecutables ni archivos enormes).<br>
+    <b>Medido:</b> 1000 imágenes (108 MB) subieron en 89 s sin bloquear el navegador. <b>Detalle práctico:</b> el selector de carpeta se envuelve en un botón visible; un input de archivos sin estilo parece solo texto.
+  </aside>
+</section>

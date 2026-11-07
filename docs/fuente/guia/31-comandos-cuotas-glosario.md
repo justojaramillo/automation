@@ -21,6 +21,8 @@ Cifras de referencia; **verifícalas en la documentación vigente de cada servic
 | `npm run dev` / `npm run build` / `npm run start` | desarrollo, compilación de producción y servidor de producción local |
 | `npm run lint` · `npx tsc --noEmit` · `npm test` | las tres comprobaciones previas a cada commit |
 | `npm run docs` | regenera `AGENTS.md` y `CLAUDE.md` desde `docs/fuente/` (solo repositorio de referencia) |
+| `npm run presentaciones` | regenera `docs/presentaciones/01-automatizacion.html` y `02-construccion.html` desde sus fragmentos (solo repositorio de referencia) |
+| `npx tsx scripts/revisar-presentaciones.ts <carpetaCapturas>` | control de calidad de las presentaciones con navegador real: desbordes, textos que no caben, diagramas encogidos y capturas |
 | `npm run generar:facturas -- --cantidad N --semilla S --salida <carpeta>` | generador de facturas (solo profesor, Fase G) |
 | `npx tsx scripts/probar-conexion.ts` | Firestore, Auth y Blob responden (Fase 0) |
 | `npx tsx scripts/verificar-reglas.ts` | las reglas de Firestore están cerradas (Fase 2) |
